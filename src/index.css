@@ -1,0 +1,161 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    margin: 0;
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.print-only {
+  display: none;
+}
+
+/* Chế độ In Báo Cáo Kỹ Thuật (Print to PDF) */
+@media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  :root {
+    color-scheme: light !important;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  aside,
+  header,
+  .no-print,
+  [role="tablist"],
+  main button {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    border-bottom: 2px solid #0f172a !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  main {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  main > div {
+    max-width: 100% !important;
+    margin: 0 auto !important;
+  }
+
+  /* Ép nền trắng chữ đen cho toàn bộ Card, Input, Select, Bảng */
+  main section,
+  main div,
+  main table,
+  main th,
+  main td {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #cbd5e1 !important;
+  }
+
+  main input,
+  main select {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border: 1px solid #94a3b8 !important;
+  }
+
+  main h1,
+  main h2,
+  main h3,
+  main label,
+  main p,
+  main span {
+    color: #0f172a !important;
+  }
+
+  /* Giữ rõ trạng thái kiểm tra ngược Đạt / Cảnh báo đỏ khi in */
+  [role="status"].border-red-500\/40,
+  [role="status"].text-red-200 {
+    border: 2px solid #dc2626 !important;
+    background-color: #fef2f2 !important;
+    color: #991b1b !important;
+  }
+
+  [role="status"].border-emerald-500\/40,
+  [role="status"].text-emerald-200 {
+    border: 2px solid #059669 !important;
+    background-color: #ecfdf5 !important;
+    color: #065f46 !important;
+  }
+
+  .text-red-400,
+  .text-red-200 {
+    color: #b91c1c !important;
+  }
+
+  .text-emerald-400,
+  .text-emerald-200 {
+    color: #047857 !important;
+  }
+
+  /* Mở rộng bảng không bị cắt ngang khi in PDF */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  tr,
+  section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  section.print-allow-break {
+    break-inside: auto !important;
+    page-break-inside: auto !important;
+  }
+
+  .print-log-sheet .text-red-500,
+  .print-log-sheet .text-emerald-500,
+  .print-log-sheet .text-emerald-400 {
+    color: #000000 !important;
+  }
+}
