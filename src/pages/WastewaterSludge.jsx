@@ -1,24 +1,25 @@
 import { useState } from 'react';
-import {
-  Cog,
-  Droplets,
-  Filter,
-  Layers,
-  RotateCcw,
-} from 'lucide-react';
+import { Cog, Layers, RotateCcw, Sun } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import {
   CheckTable as ReverseCheckTable,
+  DecimalInput,
   NumberField as NumberInput,
   StatusBanner as ReverseAlertBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const SLUDGE_EQUIPMENT_LABELS = {
+  thickener: 'Bể Nén bùn đứng',
+  dewatering: 'Hệ thống Máy ép bùn',
+  drying_bed: 'Sân phơi bùn',
+};
 
 const SLUDGE_TABS = [
-  { id: 'clarifier', label: 'Lắng 2', icon: Filter },
   { id: 'thickener', label: 'Nén bùn đứng', icon: Layers },
   { id: 'dewatering', label: 'Máy ép bùn', icon: Cog },
-  { id: 'disinfection', label: 'Khử trùng', icon: Droplets },
+  { id: 'drying_bed', label: 'Sân phơi bùn', icon: Sun },
 ];
 
 const TANK_SHAPES = [
@@ -61,22 +62,9 @@ function computeActualTank(override, shape) {
 
 export default function WastewaterSludge() {
   const { globalQ, setGlobalQ, hydraulics } = useAppContext();
-  const [activeTab, setActiveTab] = useState('clarifier');
+  const [activeTab, setActiveTab] = useState('thickener');
 
-  // --- Tab 1: Bể lắng 2 ---
-  const [clarifier, setClarifier] = useState({
-    numTanks: 1,
-    shape: 'Tròn',
-    surfaceLoadTarget: 1.0, // m3/m2.h (max chuẩn 1.5)
-    surfaceLoadMax: 1.5,
-    weirLoadMax: 250, // m3/m.ngày
-    hrtMin: 2.0, // giờ
-    depthH: 3.5, // m
-    weirRings: 1,
-  });
-  const [clarifierOverride, setClarifierOverride] = useState(null);
-
-  // --- Tab 2: Nén bùn đứng ---
+  // --- Tab 1: Nén bùn đứng ---
   const [thickener, setThickener] = useState({
     shape: 'Tròn',
     sludgeFlowPct: 2.0, // % so với globalQ
@@ -90,7 +78,7 @@ export default function WastewaterSludge() {
   });
   const [thickenerOverride, setThickenerOverride] = useState(null);
 
-  // --- Tab 3: Máy ép bùn Khung bản / Trục vít ---
+  // --- Tab 2: Máy ép bùn Khung bản / Trục vít ---
   const [dewatering, setDewatering] = useState({
     machineType: 'Khung bản',
     operateHours: 8, // giờ/ngày
@@ -101,55 +89,15 @@ export default function WastewaterSludge() {
     screwFlowRateM3h: 5, // m3 / h mỗi máy (Trục vít)
   });
 
-  // --- Tab 4: Khử trùng ---
-  const [disinfection, setDisinfection] = useState({
-    method: 'Clo / Javen',
-    chlorineDoseMgL: 8, // mg/L
-    javenPct: 10, // % NaOCl hoạt tính
-    contactMinutes: 30, // phút
-    tankDepthH: 2.5, // m
-    uvDoseMjCm2: 40, // mJ/cm2
-    uvSpecificWattPerM3h: 25, // W / (m3/h)
-    uvLampWatt: 150, // W / bóng
-    ozoneDoseMgL: 5, // mg/L
-    ozoneKwhPerKg: 15, // kWh / kg O3
+  // --- Tab 3: Sân phơi bùn ---
+  const [dryingBed, setDryingBed] = useState({
+    numBeds: 4, // số ô sân phơi
+    solidsLoadingYear: 100, // kg DS / m2.năm (chuẩn 80 - 150)
+    sludgeDepthM: 0.25, // chiều cao lớp bùn đổ 1 mẻ (m)
+    cycleDays: 15, // thời gian phơi khô 1 mẻ (ngày)
+    bedWidthM: null,
+    bedLengthM: null,
   });
-
-  // --- Computed Values: Lắng 2 ---
-  const nClarifiers = Math.max(1, Number(clarifier.numTanks) || 1);
-  const qMaxPerClarifierH = hydraulics.qMaxHour / nClarifiers;
-  const qMaxPerClarifierDay = qMaxPerClarifierH * 24;
-  const clarAreaFromLoad =
-    clarifier.surfaceLoadTarget > 0
-      ? qMaxPerClarifierH / clarifier.surfaceLoadTarget
-      : 0;
-  const clarVolFromHrt = qMaxPerClarifierH * clarifier.hrtMin;
-  const clarAreaFromHrt =
-    clarifier.depthH > 0 ? clarVolFromHrt / clarifier.depthH : 0;
-  const clarAreaTheo = Math.max(clarAreaFromLoad, clarAreaFromHrt);
-  const clarTheo = interpolateTank(
-    clarAreaTheo,
-    clarifier.depthH,
-    clarifier.shape
-  );
-  const activeClarOverride =
-    clarifierOverride ?? buildRecommendedTank(clarTheo, clarifier.shape);
-  const clarActual = computeActualTank(activeClarOverride, clarifier.shape);
-  const clarWeirLen = clarActual.weirLength * Math.max(1, clarifier.weirRings);
-  const clarSurfaceLoadActual =
-    clarActual.area > 0 ? qMaxPerClarifierH / clarActual.area : 0;
-  const clarHrtActual =
-    qMaxPerClarifierH > 0 ? clarActual.volume / qMaxPerClarifierH : 0;
-  const clarWeirLoadActual =
-    clarWeirLen > 0 ? qMaxPerClarifierDay / clarWeirLen : 0;
-
-  const isClarSlrOk =
-    hydraulics.qDay > 0 && clarSurfaceLoadActual <= clarifier.surfaceLoadMax;
-  const isClarHrtOk =
-    hydraulics.qDay > 0 && clarHrtActual >= clarifier.hrtMin;
-  const isClarWeirOk =
-    hydraulics.qDay > 0 && clarWeirLoadActual <= clarifier.weirLoadMax;
-  const isClarAllOk = isClarSlrOk && isClarHrtOk && isClarWeirOk;
 
   // --- Computed Values: Nén bùn đứng ---
   const qSludgeDay = hydraulics.qDay * (thickener.sludgeFlowPct / 100);
@@ -233,47 +181,52 @@ export default function WastewaterSludge() {
       ? Math.max(1, Math.ceil(qSludgePressHour / dewatering.screwFlowRateM3h))
       : 1;
 
-  // --- Computed Values: Khử trùng ---
-  // Clo / Javen
-  const chlorineKgDay = (hydraulics.qDay * disinfection.chlorineDoseMgL) / 1000;
-  const chlorineKgHourMax =
-    (hydraulics.qMaxHour * disinfection.chlorineDoseMgL) / 1000;
-  const javenDensity = 1.15; // kg/L cho NaOCl ~10%
-  const javenKgDay =
-    disinfection.javenPct > 0
-      ? chlorineKgDay / (disinfection.javenPct / 100)
+  // --- Computed Values: Sân phơi bùn ---
+  const annualDrySolidsKg = sludgeDryKgDay * 365;
+  const dryingAreaFromLoading =
+    dryingBed.solidsLoadingYear > 0
+      ? annualDrySolidsKg / dryingBed.solidsLoadingYear
       : 0;
-  const javenLDay = javenKgDay / javenDensity;
-  const javenLHourMax =
-    disinfection.javenPct > 0
-      ? chlorineKgHourMax / (disinfection.javenPct / 100) / javenDensity
+  const dryingAreaFromCycle =
+    dryingBed.sludgeDepthM > 0
+      ? (qThickenedDay * dryingBed.cycleDays) / dryingBed.sludgeDepthM
       : 0;
-  const contactTankVol =
-    hydraulics.qMaxHour * (disinfection.contactMinutes / 60);
-  const contactTankArea =
-    disinfection.tankDepthH > 0 ? contactTankVol / disinfection.tankDepthH : 0;
+  const dryingAreaTheoTotal = Math.max(
+    dryingAreaFromLoading,
+    dryingAreaFromCycle
+  );
+  const nBeds = Math.max(1, Number(dryingBed.numBeds) || 1);
+  const dryingAreaPerBedTheo = dryingAreaTheoTotal / nBeds;
+  const bedWidthTheo = Math.sqrt(dryingAreaPerBedTheo / 2);
+  const bedLengthTheo = bedWidthTheo * 2;
+  const recommendedBedW = roundUpToStep(bedWidthTheo, 0.5);
+  const recommendedBedL = roundUpToStep(bedLengthTheo, 0.5);
 
-  // UV
-  const uvPowerWattMax =
-    hydraulics.qMaxHour * disinfection.uvSpecificWattPerM3h;
-  const uvPowerKwMax = uvPowerWattMax / 1000;
-  const uvLampCount =
-    disinfection.uvLampWatt > 0
-      ? Math.max(1, Math.ceil(uvPowerWattMax / disinfection.uvLampWatt))
-      : 1;
-  const uvEnergyKwhDay =
-    (hydraulics.qHour * disinfection.uvSpecificWattPerM3h * 24) / 1000;
+  const activeBedW =
+    dryingBed.bedWidthM !== null
+      ? Math.max(0, Number(dryingBed.bedWidthM) || 0)
+      : recommendedBedW;
+  const activeBedL =
+    dryingBed.bedLengthM !== null
+      ? Math.max(0, Number(dryingBed.bedLengthM) || 0)
+      : recommendedBedL;
+  const dryingAreaPerBedActual = activeBedW * activeBedL;
+  const dryingAreaTotalActual = dryingAreaPerBedActual * nBeds;
+  const actualSolidsLoadingYear =
+    dryingAreaTotalActual > 0 ? annualDrySolidsKg / dryingAreaTotalActual : 0;
+  const actualSludgeDepthM =
+    dryingAreaTotalActual > 0
+      ? (qThickenedDay * dryingBed.cycleDays) / dryingAreaTotalActual
+      : 0;
 
-  // Ozone
-  const ozoneKgDay = (hydraulics.qDay * disinfection.ozoneDoseMgL) / 1000;
-  const ozoneGHourMax = hydraulics.qMaxHour * disinfection.ozoneDoseMgL;
-  const ozonePowerKw = (ozoneKgDay / 24) * disinfection.ozoneKwhPerKg;
-
-  const handleClarifierShapeChange = (nextShape) => {
-    setClarifier((p) => ({ ...p, shape: nextShape }));
-    const nextTheo = interpolateTank(clarAreaTheo, clarifier.depthH, nextShape);
-    setClarifierOverride(buildRecommendedTank(nextTheo, nextShape));
-  };
+  const isDryingAreaOk =
+    hydraulics.qDay > 0 && dryingAreaTotalActual >= dryingAreaTheoTotal;
+  const isDryingLoadOk =
+    hydraulics.qDay > 0 &&
+    actualSolidsLoadingYear <= dryingBed.solidsLoadingYear;
+  const isDryingDepthOk =
+    hydraulics.qDay > 0 && actualSludgeDepthM <= dryingBed.sludgeDepthM;
+  const isDryingAllOk = isDryingAreaOk && isDryingLoadOk && isDryingDepthOk;
 
   const handleThickenerShapeChange = (nextShape) => {
     setThickener((p) => ({ ...p, shape: nextShape }));
@@ -287,15 +240,15 @@ export default function WastewaterSludge() {
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 text-balance">
-            Lắng Thứ Cấp, Xử Lý Bùn & Khử Trùng
+            Quản Lý &amp; Xử Lý Bùn Cặn (Tuyến Bùn)
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl">
-            Tính toán hình học bể lắng 2, nén bùn đứng, kiểm tra ngược tải trọng
-            máng tràn/bề mặt/HRT và định lượng hóa chất ép bùn, khử trùng.
+            Tính toán tuyến xử lý bùn: bể nén bùn đứng trọng lực, máy ép bùn
+            (khung bản / trục vít), định lượng Polymer và sân phơi bùn.
           </p>
         </div>
 
-        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5">
+        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="sludge-global-q"
             className="flex items-center justify-between text-xs font-medium text-slate-400 mb-1.5"
@@ -306,19 +259,10 @@ export default function WastewaterSludge() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="sludge-global-q"
-              type="number"
-              min="0"
-              step="10"
-              value={globalQ === 0 ? '' : globalQ}
-              onChange={(e) =>
-                setGlobalQ(
-                  e.target.value === ''
-                    ? 0
-                    : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={globalQ}
+              onValueChange={setGlobalQ}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
@@ -328,11 +272,11 @@ export default function WastewaterSludge() {
         </div>
       </section>
 
-      {/* 4 Tabs */}
+      {/* 3 Tabs */}
       <div
         role="tablist"
-        aria-label="Công trình lắng, bùn và khử trùng"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        aria-label="Công trình quản lý bùn cặn"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {SLUDGE_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -344,330 +288,23 @@ export default function WastewaterSludge() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* TAB 1: LẮNG 2 */}
-      {activeTab === 'clarifier' && (
-        <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
-            <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-100">
-                  1. Thông số thiết kế Bể lắng đợt 2 & Hình dạng
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Tính theo Qmax,h = {hydraulics.qMaxHour.toFixed(2)} m³/h (chia
-                  cho {nClarifiers} bể)
-                </p>
-              </div>
-              <span className="font-mono text-xs text-emerald-400 tabular-nums">
-                F_lt = {clarTheo.area.toFixed(2)} m²/bể
-              </span>
-            </div>
-
-            <div className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div>
-                <label
-                  htmlFor="clar-shape"
-                  className="block text-sm font-medium text-slate-200 mb-2"
-                >
-                  Hình dạng bể lắng
-                </label>
-                <select
-                  id="clar-shape"
-                  value={clarifier.shape}
-                  onChange={(e) => handleClarifierShapeChange(e.target.value)}
-                  className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  {TANK_SHAPES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <NumberInput
-                id="clar-num"
-                label="Số đơn nguyên bể lắng"
-                unit="bể"
-                value={clarifier.numTanks}
-                min={1}
-                max={8}
-                step={1}
-                onChange={(v) =>
-                  setClarifier((p) => ({
-                    ...p,
-                    numTanks: Math.max(1, Math.round(v)),
-                  }))
-                }
-              />
-
-              <NumberInput
-                id="clar-slr"
-                label="Tải trọng bề mặt thiết kế (q₀)"
-                unit="m³/m²·h"
-                value={clarifier.surfaceLoadTarget}
-                min={0.4}
-                max={2.0}
-                step={0.1}
-                onChange={(v) =>
-                  setClarifier((p) => ({ ...p, surfaceLoadTarget: v }))
-                }
-              />
-
-              <NumberInput
-                id="clar-slr-max"
-                label="Giới hạn tải trọng bề mặt tối đa"
-                unit="m³/m²·h"
-                value={clarifier.surfaceLoadMax}
-                min={0.5}
-                max={3.0}
-                step={0.1}
-                onChange={(v) =>
-                  setClarifier((p) => ({ ...p, surfaceLoadMax: v }))
-                }
-              />
-
-              <NumberInput
-                id="clar-weir-max"
-                label="Giới hạn tải trọng máng tràn"
-                unit="m³/m·ng"
-                value={clarifier.weirLoadMax}
-                min={80}
-                max={500}
-                step={10}
-                onChange={(v) =>
-                  setClarifier((p) => ({ ...p, weirLoadMax: v }))
-                }
-              />
-
-              <NumberInput
-                id="clar-hrt-min"
-                label="Thời gian lưu tối thiểu (HRT_min)"
-                unit="giờ"
-                value={clarifier.hrtMin}
-                min={1.0}
-                max={6.0}
-                step={0.5}
-                onChange={(v) => setClarifier((p) => ({ ...p, hrtMin: v }))}
-              />
-
-              <NumberInput
-                id="clar-depth"
-                label="Chiều sâu vùng lắng lý thuyết (H)"
-                unit="m"
-                value={clarifier.depthH}
-                min={2.0}
-                max={6.0}
-                step={0.1}
-                onChange={(v) => setClarifier((p) => ({ ...p, depthH: v }))}
-              />
-
-              <NumberInput
-                id="clar-weir-rings"
-                label="Số chu vi máng tràn thu nước"
-                unit="vòng"
-                value={clarifier.weirRings}
-                min={1}
-                max={2}
-                step={1}
-                onChange={(v) =>
-                  setClarifier((p) => ({
-                    ...p,
-                    weirRings: Math.max(1, Math.round(v)),
-                  }))
-                }
-              />
-            </div>
-          </section>
-
-          {/* Theoretical Interpolated Clarifier */}
-          <section className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-              <div className="text-xs text-slate-400">
-                Kích thước nội suy lý thuyết ({clarifier.shape})
-              </div>
-              <div className="mt-2 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
-                {clarifier.shape === 'Tròn'
-                  ? `Ø ${clarTheo.D.toFixed(2)} × ${clarTheo.H.toFixed(2)} m`
-                  : `${clarTheo.a.toFixed(2)} × ${clarTheo.a.toFixed(2)} × ${clarTheo.H.toFixed(2)} m`}
-              </div>
-              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                F_lt = {clarTheo.area.toFixed(2)} m² · V_lt ={' '}
-                {clarTheo.volume.toFixed(2)} m³
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-              <div className="text-xs text-slate-400">
-                Tải trọng bề mặt thực tế
-              </div>
-              <div
-                className={`mt-2 font-mono text-xl font-semibold tabular-nums ${
-                  isClarSlrOk ? 'text-slate-100' : 'text-red-400'
-                }`}
-              >
-                {clarSurfaceLoadActual.toFixed(2)} m³/m²·h
-              </div>
-              <div className="mt-1 text-xs text-slate-400">
-                Chuẩn tối đa ≤ {clarifier.surfaceLoadMax} m³/m²·h
-              </div>
-            </div>
-
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-              <div className="text-xs text-slate-400">
-                Tải trọng máng tràn thực tế
-              </div>
-              <div
-                className={`mt-2 font-mono text-xl font-semibold tabular-nums ${
-                  isClarWeirOk ? 'text-slate-100' : 'text-red-400'
-                }`}
-              >
-                {clarWeirLoadActual.toFixed(1)} m³/m·ng
-              </div>
-              <div className="mt-1 text-xs text-slate-400 font-mono tabular-nums">
-                L_máng = {clarWeirLen.toFixed(1)} m (≤ {clarifier.weirLoadMax})
-              </div>
-            </div>
-          </section>
-
-          {/* Override & Reverse Check */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-100">
-                  2. Chốt kích thước thi công & Kiểm tra ngược Bể lắng 2
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Nhập kích thước chẵn ({clarifier.shape}) để kiểm tra ngược tải
-                  trọng bề mặt, máng tràn và HRT.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() =>
-                  setClarifierOverride(
-                    buildRecommendedTank(clarTheo, clarifier.shape)
-                  )
-                }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              >
-                <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Làm tròn theo lý thuyết</span>
-              </button>
-            </div>
-
-            <div className="flex flex-col md:grid md:grid-cols-2 gap-4">
-              {clarifier.shape === 'Tròn' ? (
-                <NumberInput
-                  id="clar-ov-D"
-                  label="Đường kính bể chọn (D)"
-                  unit="m"
-                  value={activeClarOverride.D}
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  onChange={(v) =>
-                    setClarifierOverride({ ...activeClarOverride, D: v })
-                  }
-                />
-              ) : (
-                <NumberInput
-                  id="clar-ov-a"
-                  label="Cạnh bể vuông chọn (a)"
-                  unit="m"
-                  value={activeClarOverride.a}
-                  min={0}
-                  max={100}
-                  step={0.1}
-                  onChange={(v) =>
-                    setClarifierOverride({ ...activeClarOverride, a: v })
-                  }
-                />
-              )}
-
-              <NumberInput
-                id="clar-ov-H"
-                label="Chiều sâu vùng lắng chọn (H)"
-                unit="m"
-                value={activeClarOverride.H}
-                min={0}
-                max={15}
-                step={0.1}
-                onChange={(v) =>
-                  setClarifierOverride({ ...activeClarOverride, H: v })
-                }
-              />
-            </div>
-
-            <ReverseAlertBanner
-              ok={isClarAllOk}
-              titleOk="ĐẠT CHUẨN BỂ LẮNG ĐỢT 2"
-              titleFail="CẢNH BÁO ĐỎ: VƯỢT NGƯỠNG THIẾT KẾ BỂ LẮNG 2"
-              summaryLabel="Thể tích · HRT thực"
-              message={
-                isClarAllOk
-                  ? `Tải trọng bề mặt (${clarSurfaceLoadActual.toFixed(2)} m³/m²·h), máng tràn (${clarWeirLoadActual.toFixed(1)} m³/m·ng) và HRT (${clarHrtActual.toFixed(2)}h) đều đạt chuẩn.`
-                  : `${!isClarSlrOk ? `Vượt tải trọng bề mặt (${clarSurfaceLoadActual.toFixed(2)} > ${clarifier.surfaceLoadMax} m³/m²·h). ` : ''}${!isClarWeirOk ? `Vượt tải trọng máng tràn (${clarWeirLoadActual.toFixed(1)} > ${clarifier.weirLoadMax} m³/m·ng). ` : ''}${!isClarHrtOk ? `Thiếu thời gian lưu (${clarHrtActual.toFixed(2)} < ${clarifier.hrtMin} giờ).` : ''}`
-              }
-              summaryRight={`${clarActual.volume.toFixed(1)} m³ · ${clarHrtActual.toFixed(2)} h`}
-            />
-
-            <ReverseCheckTable
-              rows={[
-                {
-                  name: 'Tải trọng bề mặt tại Qmax (q₀)',
-                  standard: `≤ ${clarifier.surfaceLoadMax.toFixed(2)} m³/m²·h`,
-                  actual: `${clarSurfaceLoadActual.toFixed(2)} m³/m²·h`,
-                  ok: isClarSlrOk,
-                  statusText: isClarSlrOk ? 'Đạt chuẩn' : 'Vượt tải trọng',
-                },
-                {
-                  name: 'Tải trọng máng tràn (q_weir)',
-                  standard: `≤ ${clarifier.weirLoadMax.toFixed(0)} m³/m·ngày`,
-                  actual: `${clarWeirLoadActual.toFixed(1)} m³/m·ngày`,
-                  ok: isClarWeirOk,
-                  statusText: isClarWeirOk ? 'Đạt chuẩn' : 'Vượt tải máng tràn',
-                },
-                {
-                  name: 'Thời gian lưu thủy lực (HRT)',
-                  standard: `≥ ${clarifier.hrtMin.toFixed(2)} giờ`,
-                  actual: `${clarHrtActual.toFixed(2)} giờ`,
-                  ok: isClarHrtOk,
-                  statusText: isClarHrtOk ? 'Đạt chuẩn' : 'Thiếu thời gian lưu',
-                },
-                {
-                  name: 'Thể tích vùng lắng thực tế (1 bể)',
-                  standard: `≥ ${clarTheo.volume.toFixed(1)} m³`,
-                  actual: `${clarActual.volume.toFixed(1)} m³`,
-                  ok: clarActual.volume >= clarTheo.volume,
-                  statusText:
-                    clarActual.volume >= clarTheo.volume
-                      ? 'Đủ thể tích'
-                      : 'Nhỏ hơn lý thuyết',
-                },
-              ]}
-            />
-          </section>
-        </div>
-      )}
-
       {/* TAB 2: NÉN BÙN ĐỨNG */}
       {activeTab === 'thickener' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -800,7 +437,7 @@ export default function WastewaterSludge() {
           </section>
 
           <section className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Kích thước nội suy lý thuyết ({thickener.shape})
               </div>
@@ -815,7 +452,7 @@ export default function WastewaterSludge() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Tải trọng chất rắn thực (SLR)
               </div>
@@ -831,7 +468,7 @@ export default function WastewaterSludge() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Lưu lượng bùn đặc sau nén
               </div>
@@ -844,7 +481,7 @@ export default function WastewaterSludge() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -862,7 +499,7 @@ export default function WastewaterSludge() {
                     buildRecommendedTank(thickTheo, thickener.shape)
                   )
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -963,7 +600,7 @@ export default function WastewaterSludge() {
       {/* TAB 3: MÁY ÉP BÙN KHUNG BẢN / TRỤC VÍT */}
       {activeTab === 'dewatering' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1090,7 +727,7 @@ export default function WastewaterSludge() {
           </section>
 
           <section className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Lượng Polymer nguyên chất cần thiết
               </div>
@@ -1102,7 +739,7 @@ export default function WastewaterSludge() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Lưu lượng dung dịch Polymer {dewatering.polymerConcPct}%
               </div>
@@ -1114,7 +751,7 @@ export default function WastewaterSludge() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 {dewatering.machineType === 'Khung bản'
                   ? 'Diện tích bản lọc cần thiết'
@@ -1134,299 +771,230 @@ export default function WastewaterSludge() {
         </div>
       )}
 
-      {/* TAB 4: KHỬ TRÙNG (CLO/JAVEN, UV, OZONE) */}
-      {activeTab === 'disinfection' && (
+      {/* TAB 3: SÂN PHƠI BÙN */}
+      {activeTab === 'drying_bed' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
-                  Tính toán Khử trùng Nước thải đầu ra
+                  1. Thông số thiết kế Sân phơi bùn (Sludge Drying Bed)
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Tính lượng Clo/Javen hoặc công suất thiết bị UV/Ozone theo
-                  lưu lượng Q thực tế ({hydraulics.qDay.toLocaleString('vi-VN')}{' '}
-                  m³/ngày · Qmax = {hydraulics.qMaxHour.toFixed(2)} m³/h)
+                  Tính theo lượng chất rắn khô ({sludgeDryKgDay.toFixed(1)} kg
+                  DS/ngày) và lưu lượng bùn sau nén ({qThickenedDay.toFixed(2)}{' '}
+                  m³/ngày)
                 </p>
               </div>
+              <span className="font-mono text-xs text-emerald-400 tabular-nums">
+                F_lt tổng = {dryingAreaTheoTotal.toFixed(1)} m² ({nBeds} ô)
+              </span>
             </div>
 
-            <div className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div>
-                <label
-                  htmlFor="dis-method"
-                  className="block text-sm font-medium text-slate-200 mb-2"
-                >
-                  Phương pháp khử trùng
-                </label>
-                <select
-                  id="dis-method"
-                  value={disinfection.method}
-                  onChange={(e) =>
-                    setDisinfection((p) => ({ ...p, method: e.target.value }))
-                  }
-                  className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  <option value="Clo / Javen">Clo khí / Nước Javen (NaOCl)</option>
-                  <option value="UV">Đèn tia cực tím (UV)</option>
-                  <option value="Ozone">Khí Ozone (O₃)</option>
-                </select>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <NumberInput
+                id="dry-num-beds"
+                label="Số ô sân phơi bùn bố trí"
+                unit="ô"
+                value={dryingBed.numBeds}
+                min={2}
+                max={24}
+                step={1}
+                onChange={(v) =>
+                  setDryingBed((p) => ({
+                    ...p,
+                    numBeds: Math.max(1, Math.round(v)),
+                  }))
+                }
+              />
 
-              {disinfection.method === 'Clo / Javen' && (
-                <>
-                  <NumberInput
-                    id="dis-cl-dose"
-                    label="Liều lượng Clo hoạt tính"
-                    unit="mg/L"
-                    value={disinfection.chlorineDoseMgL}
-                    min={1}
-                    max={30}
-                    step={0.5}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, chlorineDoseMgL: v }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-javen-pct"
-                    label="Nồng độ Javen thương phẩm"
-                    unit="% NaOCl"
-                    value={disinfection.javenPct}
-                    min={5}
-                    max={15}
-                    step={1}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, javenPct: v }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-contact-min"
-                    label="Thời gian tiếp xúc (t)"
-                    unit="phút"
-                    value={disinfection.contactMinutes}
-                    min={15}
-                    max={60}
-                    step={5}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, contactMinutes: v }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-tank-h"
-                    label="Chiều sâu bể tiếp xúc (H)"
-                    unit="m"
-                    value={disinfection.tankDepthH}
-                    min={1.5}
-                    max={4.5}
-                    step={0.1}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, tankDepthH: v }))
-                    }
-                  />
-                </>
-              )}
+              <NumberInput
+                id="dry-solids-load"
+                label="Tải trọng chất rắn khô (L_s)"
+                unit="kg DS/m²·năm"
+                value={dryingBed.solidsLoadingYear}
+                min={50}
+                max={250}
+                step={10}
+                onChange={(v) =>
+                  setDryingBed((p) => ({ ...p, solidsLoadingYear: v }))
+                }
+              />
 
-              {disinfection.method === 'UV' && (
-                <>
-                  <NumberInput
-                    id="dis-uv-dose"
-                    label="Liều bức xạ UV thiết kế"
-                    unit="mJ/cm²"
-                    value={disinfection.uvDoseMjCm2}
-                    min={20}
-                    max={100}
-                    step={5}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, uvDoseMjCm2: v }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-uv-spec"
-                    label="Suất công suất đèn UV"
-                    unit="W/(m³/h)"
-                    value={disinfection.uvSpecificWattPerM3h}
-                    min={10}
-                    max={80}
-                    step={1}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({
-                        ...p,
-                        uvSpecificWattPerM3h: v,
-                      }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-uv-lamp"
-                    label="Công suất 1 bóng đèn UV"
-                    unit="W/bóng"
-                    value={disinfection.uvLampWatt}
-                    min={40}
-                    max={500}
-                    step={10}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, uvLampWatt: v }))
-                    }
-                  />
-                </>
-              )}
+              <NumberInput
+                id="dry-depth"
+                label="Chiều cao lớp bùn đổ 1 mẻ (h_đổ)"
+                unit="m"
+                value={dryingBed.sludgeDepthM}
+                min={0.15}
+                max={0.45}
+                step={0.05}
+                onChange={(v) =>
+                  setDryingBed((p) => ({ ...p, sludgeDepthM: v }))
+                }
+              />
 
-              {disinfection.method === 'Ozone' && (
-                <>
-                  <NumberInput
-                    id="dis-o3-dose"
-                    label="Liều lượng Ozone (O₃)"
-                    unit="mg/L"
-                    value={disinfection.ozoneDoseMgL}
-                    min={1}
-                    max={25}
-                    step={0.5}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, ozoneDoseMgL: v }))
-                    }
-                  />
-                  <NumberInput
-                    id="dis-o3-kwh"
-                    label="Suất tiêu hao điện tạo O₃"
-                    unit="kWh/kg"
-                    value={disinfection.ozoneKwhPerKg}
-                    min={8}
-                    max={25}
-                    step={1}
-                    onChange={(v) =>
-                      setDisinfection((p) => ({ ...p, ozoneKwhPerKg: v }))
-                    }
-                  />
-                </>
-              )}
+              <NumberInput
+                id="dry-cycle"
+                label="Chu kỳ làm khô bùn (T_mẻ)"
+                unit="ngày/mẻ"
+                value={dryingBed.cycleDays}
+                min={7}
+                max={30}
+                step={1}
+                onChange={(v) => setDryingBed((p) => ({ ...p, cycleDays: v }))}
+              />
+            </div>
+
+            <div className="pt-3 border-t border-slate-700/70 text-xs font-mono text-slate-400">
+              F_tải = ({sludgeDryKgDay.toFixed(1)} × 365) /{' '}
+              {dryingBed.solidsLoadingYear} = {dryingAreaFromLoading.toFixed(1)}{' '}
+              m² · F_chu kỳ = ({qThickenedDay.toFixed(2)} × {dryingBed.cycleDays}
+              ) / {dryingBed.sludgeDepthM} = {dryingAreaFromCycle.toFixed(1)} m²
             </div>
           </section>
 
-          {/* Disinfection Results */}
-          <section className="flex flex-col md:grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {disinfection.method === 'Clo / Javen' && (
-              <>
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Lượng Clo hoạt tính tiêu thụ
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-emerald-400 tabular-nums">
-                    {chlorineKgDay.toFixed(2)} kg/ngày
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    Cực đại: {chlorineKgHourMax.toFixed(3)} kg/giờ
-                  </div>
-                </div>
+          {/* Theoretical Drying Bed KPIs */}
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Tổng diện tích sân phơi lý thuyết
+              </div>
+              <div className="mt-2 font-mono text-2xl font-semibold text-emerald-400 tabular-nums">
+                {dryingAreaTheoTotal.toFixed(1)} m²
+              </div>
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                Mỗi ô: {dryingAreaPerBedTheo.toFixed(1)} m² ({bedLengthTheo.toFixed(1)} ×{' '}
+                {bedWidthTheo.toFixed(1)} m)
+              </div>
+            </div>
 
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Lưu lượng Javen {disinfection.javenPct}% cần châm
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {javenLDay.toFixed(1)} L/ngày
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    Bơm định lượng max: {javenLHourMax.toFixed(2)} L/giờ
-                  </div>
-                </div>
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Tổng lượng bùn khô phát sinh/năm
+              </div>
+              <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
+                {(annualDrySolidsKg / 1000).toFixed(1)} tấn DS/năm
+              </div>
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                {sludgeDryKgDay.toFixed(1)} kg DS/ngày · {qThickenedDay.toFixed(2)}{' '}
+                m³ bùn nén/ng
+              </div>
+            </div>
 
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Thể tích bể tiếp xúc khử trùng
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {contactTankVol.toFixed(1)} m³
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    F = {contactTankArea.toFixed(1)} m² · H ={' '}
-                    {disinfection.tankDepthH} m
-                  </div>
-                </div>
-              </>
-            )}
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Thể tích bùn nạp trong 1 chu kỳ ({dryingBed.cycleDays} ngày)
+              </div>
+              <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
+                {(qThickenedDay * dryingBed.cycleDays).toFixed(1)} m³/mẻ
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                Bề dày lớp bùn thực tế: {actualSludgeDepthM.toFixed(2)} m
+              </div>
+            </div>
+          </section>
 
-            {disinfection.method === 'UV' && (
-              <>
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Công suất hệ thống UV (theo Qmax)
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-emerald-400 tabular-nums">
-                    {uvPowerKwMax.toFixed(2)} kW
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    {uvPowerWattMax.toFixed(0)} W · Liều {disinfection.uvDoseMjCm2}{' '}
-                    mJ/cm²
-                  </div>
-                </div>
+          {/* Override & Reverse Check */}
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  2. Chốt kích thước 1 ô sân phơi &amp; Kiểm tra ngược
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Nhập kích thước chẵn cho mỗi ô (tổng {nBeds} ô) để kiểm tra
+                  ngược tải trọng chất rắn và chiều cao đổ bùn thực tế.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setDryingBed((p) => ({
+                    ...p,
+                    bedLengthM: recommendedBedL,
+                    bedWidthM: recommendedBedW,
+                  }))
+                }
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Làm tròn theo lý thuyết</span>
+              </button>
+            </div>
 
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Số lượng bóng đèn UV dự kiến
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {uvLampCount} bóng
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Công suất {disinfection.uvLampWatt} W/bóng
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <NumberInput
+                id="dry-ov-L"
+                label="Chiều dài 1 ô sân phơi (L)"
+                unit="m"
+                value={activeBedL}
+                min={1}
+                max={50}
+                step={0.5}
+                onChange={(v) => setDryingBed((p) => ({ ...p, bedLengthM: v }))}
+              />
+              <NumberInput
+                id="dry-ov-W"
+                label="Chiều rộng 1 ô sân phơi (W)"
+                unit="m"
+                value={activeBedW}
+                min={1}
+                max={30}
+                step={0.5}
+                onChange={(v) => setDryingBed((p) => ({ ...p, bedWidthM: v }))}
+              />
+            </div>
 
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Điện năng tiêu thụ trung bình
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {uvEnergyKwhDay.toFixed(1)} kWh/ngày
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Vận hành liên tục 24 giờ/ngày
-                  </div>
-                </div>
-              </>
-            )}
+            <ReverseAlertBanner
+              ok={isDryingAllOk}
+              titleOk="ĐẠT CHUẨN DIỆN TÍCH & TẢI TRỌNG SÂN PHƠI BÙN"
+              titleFail="CẢNH BÁO ĐỎ: SÂN PHƠI BÙN KHÔNG ĐỦ DIỆN TÍCH"
+              summaryLabel="Tổng F_thực · h_đổ thực"
+              message={
+                isDryingAllOk
+                  ? `Tổng diện tích ${nBeds} ô (${dryingAreaTotalActual.toFixed(1)} m²) ≥ yêu cầu (${dryingAreaTheoTotal.toFixed(1)} m²), chiều cao đổ bùn thực tế (${actualSludgeDepthM.toFixed(2)} m) đạt chuẩn.`
+                  : `${!isDryingAreaOk ? `Tổng diện tích (${dryingAreaTotalActual.toFixed(1)} m²) < yêu cầu (${dryingAreaTheoTotal.toFixed(1)} m²). ` : ''}${!isDryingLoadOk ? `Vượt tải trọng chất rắn (${actualSolidsLoadingYear.toFixed(1)} > ${dryingBed.solidsLoadingYear} kg DS/m²·năm). ` : ''}${!isDryingDepthOk ? `Chiều dày lớp bùn (${actualSludgeDepthM.toFixed(2)} m) vượt mức cho phép (${dryingBed.sludgeDepthM} m).` : ''}`
+              }
+              summaryRight={`${dryingAreaTotalActual.toFixed(1)} m² · ${actualSludgeDepthM.toFixed(2)} m`}
+            />
 
-            {disinfection.method === 'Ozone' && (
-              <>
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Công suất máy phát Ozone (theo Qmax)
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-emerald-400 tabular-nums">
-                    {ozoneGHourMax.toFixed(1)} g O₃/giờ
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    Liều lượng {disinfection.ozoneDoseMgL} mg/L
-                  </div>
-                </div>
-
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Tổng lượng Ozone tiêu thụ/ngày
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {ozoneKgDay.toFixed(2)} kg O₃/ngày
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">
-                    Theo Qtb = {hydraulics.qDay.toLocaleString('vi-VN')} m³/ngày
-                  </div>
-                </div>
-
-                <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
-                  <div className="text-xs text-slate-400">
-                    Công suất điện máy tạo Ozone
-                  </div>
-                  <div className="mt-2 font-mono text-2xl font-semibold text-slate-100 tabular-nums">
-                    {ozonePowerKw.toFixed(2)} kW
-                  </div>
-                  <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                    {(ozonePowerKw * 24).toFixed(1)} kWh/ngày
-                  </div>
-                </div>
-              </>
-            )}
+            <ReverseCheckTable
+              rows={[
+                {
+                  name: `Tổng diện tích sân phơi (${nBeds} ô)`,
+                  standard: `≥ ${dryingAreaTheoTotal.toFixed(1)} m²`,
+                  actual: `${dryingAreaTotalActual.toFixed(1)} m²`,
+                  ok: isDryingAreaOk,
+                  statusText: isDryingAreaOk ? 'Đạt chuẩn' : 'Thiếu diện tích',
+                },
+                {
+                  name: 'Tải trọng chất rắn khô (L_s)',
+                  standard: `≤ ${dryingBed.solidsLoadingYear.toFixed(0)} kg DS/m²·năm`,
+                  actual: `${actualSolidsLoadingYear.toFixed(1)} kg DS/m²·năm`,
+                  ok: isDryingLoadOk,
+                  statusText: isDryingLoadOk ? 'Đạt chuẩn' : 'Vượt tải trọng',
+                },
+                {
+                  name: 'Chiều dày lớp bùn 1 chu kỳ (h_đổ)',
+                  standard: `≤ ${dryingBed.sludgeDepthM.toFixed(2)} m`,
+                  actual: `${actualSludgeDepthM.toFixed(2)} m`,
+                  ok: isDryingDepthOk,
+                  statusText: isDryingDepthOk ? 'Đạt chiều dày' : 'Quá dày',
+                },
+              ]}
+            />
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_wastewatersludge_${activeTab}`}
+        moduleLabel={
+          SLUDGE_EQUIPMENT_LABELS[activeTab] || 'Công trình Xử lý Bùn'
+        }
+        storageKey={`omnieco_equipments_wastewatersludge_${activeTab}`}
+      />
     </div>
   );
 }

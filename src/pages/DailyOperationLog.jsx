@@ -9,6 +9,7 @@ import {
   CloudUpload,
   Copy,
   HelpCircle,
+  LayoutGrid,
   Loader2,
   Pencil,
   Printer,
@@ -16,6 +17,7 @@ import {
   RotateCcw,
   Save,
   Settings2,
+  Table,
   Trash2,
   X,
 } from 'lucide-react';
@@ -37,8 +39,11 @@ const APPS_SCRIPT_CODE = `function doPost(e) {
       data.SV30 || 0,
       data.PAC || 0,
       data.polymer || 0,
-      data.notes || '',
-      data.operator || ''
+      data.disinfectant || '',
+      data.molasses || '',
+      data.alkalinity || '',
+      data.operator || '',
+      data.notes || ''
     ]);
 
     return ContentService
@@ -79,17 +84,51 @@ function isValidHttpUrl(rawUrl) {
   }
 }
 
+function sanitizeNonNegative(raw) {
+  if (raw === '' || raw === null || raw === undefined) return 0;
+  const parsed = parseFloat(String(raw));
+  if (Number.isNaN(parsed) || !Number.isFinite(parsed)) return 0;
+  return Math.max(0, parsed);
+}
+
+function normalizeChemicalField(raw, defaultUnit = 'kg') {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return {
+      value: sanitizeNonNegative(raw.value),
+      unit: raw.unit === 'Lít' ? 'Lít' : 'kg',
+    };
+  }
+  return {
+    value: sanitizeNonNegative(raw),
+    unit: defaultUnit === 'Lít' ? 'Lít' : 'kg',
+  };
+}
+
+function formatChemicalDisplay(raw, defaultUnit = 'kg') {
+  const normalized = normalizeChemicalField(raw, defaultUnit);
+  return `${normalized.value} ${normalized.unit}`;
+}
+
+function toInputString(val) {
+  if (val === '' || val === null || val === undefined) return '';
+  const num = Number(val);
+  if (Number.isNaN(num) || num === 0) return '';
+  return String(val);
+}
+
 function createDefaultForm(suggestedQ) {
+  const qNum = Math.max(0, parseFloat(String(suggestedQ ?? '')) || 0);
   return {
     shiftDateTime: getNowLocalDateTime(),
-    flowQ: Math.max(0, Number(suggestedQ) || 0),
-    ph: 7.2,
-    doMgL: 2.5,
-    sv30: 300,
-    pac: 0,
-    polymer: 0,
-    javen: 0,
-    molasses: 0,
+    flowQ: qNum > 0 ? String(qNum) : '',
+    ph: '7.2',
+    doMgL: '2.5',
+    sv30: '300',
+    pac: { value: '', unit: 'kg' },
+    polymer: '',
+    disinfectant: { value: '', unit: 'Lít' },
+    molasses: { value: '', unit: 'kg' },
+    alkalinity: { value: '', unit: 'kg' },
     operator: '',
     notes: '',
   };
@@ -100,13 +139,6 @@ function createLogId() {
     return crypto.randomUUID();
   }
   return `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function sanitizeNonNegative(raw) {
-  if (raw === '') return 0;
-  const parsed = Number(raw);
-  if (Number.isNaN(parsed) || !Number.isFinite(parsed)) return 0;
-  return Math.max(0, parsed);
 }
 
 export default function DailyOperationLog() {
@@ -144,6 +176,13 @@ export default function DailyOperationLog() {
       if (!Array.isArray(parsed)) return [];
       return parsed.map((item) => ({
         ...item,
+        pac: normalizeChemicalField(item.pac, 'kg'),
+        disinfectant: normalizeChemicalField(
+          item.disinfectant ?? item.javen,
+          'Lít'
+        ),
+        molasses: normalizeChemicalField(item.molasses, 'kg'),
+        alkalinity: normalizeChemicalField(item.alkalinity, 'kg'),
         isSynced: Boolean(item.isSynced),
       }));
     } catch {
@@ -159,6 +198,7 @@ export default function DailyOperationLog() {
   const [toast, setToast] = useState(null); // { ok: boolean, message: string }
   const [guideOpen, setGuideOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [viewMode, setViewMode] = useState('table');
 
   // Đóng Modal hướng dẫn bằng phím Escape
   useEffect(() => {
@@ -184,9 +224,10 @@ export default function DailyOperationLog() {
   // Keep flowQ synced with globalQ suggestion when not editing & user hasn't manually changed it
   useEffect(() => {
     if (!editingId && !flowTouched) {
+      const qNum = Math.max(0, parseFloat(String(globalQ ?? '')) || 0);
       setForm((prev) => ({
         ...prev,
-        flowQ: Math.max(0, Number(globalQ) || 0),
+        flowQ: qNum > 0 ? String(qNum) : '',
       }));
     }
   }, [globalQ, editingId, flowTouched]);
@@ -300,18 +341,35 @@ export default function DailyOperationLog() {
       };
     }
 
+    const pacField = normalizeChemicalField(formData.pac, 'kg');
+    const disinfectantField = normalizeChemicalField(
+      formData.disinfectant ?? formData.khuTrung ?? formData.javen,
+      'Lít'
+    );
+    const molassesField = normalizeChemicalField(
+      formData.molasses ?? formData.matRi,
+      'kg'
+    );
+    const alkalinityField = normalizeChemicalField(
+      formData.alkalinity ?? formData.nangKiem,
+      'kg'
+    );
+
     const payload = {
       date: formData.shiftDateTime
         ? formatDateTimeDisplay(formData.shiftDateTime)
         : '',
-      flow: formData.flowQ ?? '',
-      pH: formData.ph ?? '',
-      DO: formData.doMgL ?? '',
-      SV30: formData.sv30 ?? '',
-      PAC: formData.pac ?? '',
-      polymer: formData.polymer ?? '',
-      notes: formData.notes ?? '',
-      operator: formData.operator ?? '',
+      flow: formData.flowQ ?? 0,
+      pH: formData.ph ?? 0,
+      DO: formData.doMgL ?? 0,
+      SV30: formData.sv30 ?? 0,
+      PAC: `${pacField.value} ${pacField.unit}`,
+      polymer: formData.polymer ?? 0,
+      disinfectant: `${disinfectantField.value} ${disinfectantField.unit}`,
+      molasses: `${molassesField.value} ${molassesField.unit}`,
+      alkalinity: `${alkalinityField.value} ${alkalinityField.unit}`,
+      operator: String(formData.operator ?? formData.nguoiTruc ?? '').trim(),
+      notes: String(formData.notes ?? formData.ghiChu ?? '').trim(),
     };
 
     const response = await fetch(targetUrl, {
@@ -326,13 +384,54 @@ export default function DailyOperationLog() {
       throw new Error(`HTTP ${response.status}`);
     }
 
+    const rawText = await response.text();
+    if (rawText) {
+      let parsedResult = null;
+      try {
+        parsedResult = JSON.parse(rawText);
+      } catch {
+        parsedResult = null;
+      }
+      if (parsedResult && parsedResult.status === 'error') {
+        throw new Error(parsedResult.message || 'Google Apps Script error');
+      }
+    }
+
     return { ok: true };
   };
 
   const handleNumberChange = (field) => (e) => {
-    const val = sanitizeNonNegative(e.target.value);
+    const validValue = e.target.value
+      .replace(/[^0-9.]/g, '')
+      .replace(/(\..*?)\..*/g, '$1');
     if (field === 'flowQ') setFlowTouched(true);
-    setForm((prev) => ({ ...prev, [field]: val }));
+    setForm((prev) => ({ ...prev, [field]: validValue }));
+  };
+
+  const handleChemicalValueChange = (field, defaultUnit = 'kg') => (e) => {
+    const validValue = e.target.value
+      .replace(/[^0-9.]/g, '')
+      .replace(/(\..*?)\..*/g, '$1');
+    setForm((prev) => ({
+      ...prev,
+      [field]: {
+        unit: prev[field]?.unit === 'Lít' || prev[field]?.unit === 'kg'
+          ? prev[field].unit
+          : defaultUnit,
+        value: validValue,
+      },
+    }));
+  };
+
+  const handleChemicalUnitChange = (field) => (e) => {
+    const nextUnit = e.target.value === 'Lít' ? 'Lít' : 'kg';
+    setForm((prev) => ({
+      ...prev,
+      [field]: {
+        value: typeof prev[field]?.value === 'string' ? prev[field].value : toInputString(prev[field]?.value),
+        unit: nextUnit,
+      },
+    }));
   };
 
   const handleResetForm = () => {
@@ -357,14 +456,15 @@ export default function DailyOperationLog() {
 
     const normalizedEntry = {
       shiftDateTime: form.shiftDateTime,
-      flowQ: Math.max(0, Number(form.flowQ) || 0),
-      ph: Math.min(14, Math.max(0, Number(form.ph) || 0)),
-      doMgL: Math.max(0, Number(form.doMgL) || 0),
-      sv30: Math.max(0, Number(form.sv30) || 0),
-      pac: Math.max(0, Number(form.pac) || 0),
-      polymer: Math.max(0, Number(form.polymer) || 0),
-      javen: Math.max(0, Number(form.javen) || 0),
-      molasses: Math.max(0, Number(form.molasses) || 0),
+      flowQ: Math.max(0, parseFloat(form.flowQ) || 0),
+      ph: Math.min(14, Math.max(0, parseFloat(form.ph) || 0)),
+      doMgL: Math.max(0, parseFloat(form.doMgL) || 0),
+      sv30: Math.max(0, parseFloat(form.sv30) || 0),
+      pac: normalizeChemicalField(form.pac, 'kg'),
+      polymer: Math.max(0, parseFloat(form.polymer) || 0),
+      disinfectant: normalizeChemicalField(form.disinfectant, 'Lít'),
+      molasses: normalizeChemicalField(form.molasses, 'kg'),
+      alkalinity: normalizeChemicalField(form.alkalinity, 'kg'),
       operator: form.operator.trim(),
       notes: form.notes.trim(),
     };
@@ -521,18 +621,38 @@ export default function DailyOperationLog() {
   };
 
   const handleEdit = (entry) => {
+    const pacNormalized = normalizeChemicalField(entry.pac, 'kg');
+    const disinfectantNormalized = normalizeChemicalField(
+      entry.disinfectant ?? entry.javen,
+      'Lít'
+    );
+    const molassesNormalized = normalizeChemicalField(entry.molasses, 'kg');
+    const alkalinityNormalized = normalizeChemicalField(entry.alkalinity, 'kg');
     setEditingId(entry.id);
     setFlowTouched(true);
     setForm({
       shiftDateTime: entry.shiftDateTime || getNowLocalDateTime(),
-      flowQ: Number(entry.flowQ) || 0,
-      ph: Number(entry.ph) || 0,
-      doMgL: Number(entry.doMgL) || 0,
-      sv30: Number(entry.sv30) || 0,
-      pac: Number(entry.pac) || 0,
-      polymer: Number(entry.polymer) || 0,
-      javen: Number(entry.javen) || 0,
-      molasses: Number(entry.molasses) || 0,
+      flowQ: toInputString(entry.flowQ),
+      ph: entry.ph !== undefined && entry.ph !== null ? String(entry.ph) : '',
+      doMgL: entry.doMgL !== undefined && entry.doMgL !== null ? String(entry.doMgL) : '',
+      sv30: entry.sv30 !== undefined && entry.sv30 !== null ? String(entry.sv30) : '',
+      pac: {
+        value: toInputString(pacNormalized.value),
+        unit: pacNormalized.unit,
+      },
+      polymer: toInputString(entry.polymer),
+      disinfectant: {
+        value: toInputString(disinfectantNormalized.value),
+        unit: disinfectantNormalized.unit,
+      },
+      molasses: {
+        value: toInputString(molassesNormalized.value),
+        unit: molassesNormalized.unit,
+      },
+      alkalinity: {
+        value: toInputString(alkalinityNormalized.value),
+        unit: alkalinityNormalized.unit,
+      },
       operator: entry.operator || '',
       notes: entry.notes || '',
     });
@@ -564,7 +684,7 @@ export default function DailyOperationLog() {
   const isUrlConfigured = isValidHttpUrl(savedGsheetUrl);
 
   return (
-    <div className="space-y-6 print-log-sheet">
+    <div className="space-y-6 pb-24 print:pb-0 print-log-sheet">
       {/* Thiết lập trang in A4 nằm ngang riêng cho Nhật ký vận hành */}
       <style>{`@media print { @page { size: landscape; margin: 10mm; } }`}</style>
 
@@ -653,11 +773,8 @@ export default function DailyOperationLog() {
               </button>
             </div>
             <p className="text-xs text-slate-400">
-              URL được lưu cục bộ trên trình duyệt tại{' '}
-              <code className="text-slate-300">localStorage</code> (key:{' '}
-              <code className="text-emerald-400">dvn_gsheet_url</code>). Nếu mất
-              mạng hoặc chưa gắn URL, dữ liệu vẫn lưu an toàn Offline để đồng bộ
-              bù sau.
+              URL được lưu cục bộ trên trình duyệt của bạn. Nếu mất mạng hoặc
+              chưa gắn URL, dữ liệu vẫn lưu an toàn Offline để đồng bộ bù sau.
             </p>
           </form>
         )}
@@ -893,40 +1010,48 @@ export default function DailyOperationLog() {
             />
 
             {/* Hóa chất tiêu thụ */}
-            <LogNumberInput
+            <LogChemicalWithUnitInput
               id="log-pac"
               label="Hóa chất PAC tiêu thụ"
-              unit="kg / L"
-              step={0.5}
-              value={form.pac}
-              onChange={handleNumberChange('pac')}
+              defaultUnit="kg"
+              fieldValue={form.pac}
+              onValueChange={handleChemicalValueChange('pac', 'kg')}
+              onUnitChange={handleChemicalUnitChange('pac')}
             />
 
             <LogNumberInput
               id="log-polymer"
               label="Polymer (ép bùn / keo tụ)"
               unit="kg"
-              step={0.1}
               value={form.polymer}
               onChange={handleNumberChange('polymer')}
             />
 
-            <LogNumberInput
-              id="log-javen"
-              label="Javen NaOCl khử trùng"
-              unit="Lít"
-              step={0.5}
-              value={form.javen}
-              onChange={handleNumberChange('javen')}
+            <LogChemicalWithUnitInput
+              id="log-disinfectant"
+              label="Khử trùng (Javen / Clo bột / TCCA)"
+              defaultUnit="Lít"
+              fieldValue={form.disinfectant}
+              onValueChange={handleChemicalValueChange('disinfectant', 'Lít')}
+              onUnitChange={handleChemicalUnitChange('disinfectant')}
             />
 
-            <LogNumberInput
+            <LogChemicalWithUnitInput
               id="log-molasses"
               label="Mật rỉ / Carbon bổ sung"
-              unit="kg / L"
-              step={1}
-              value={form.molasses}
-              onChange={handleNumberChange('molasses')}
+              defaultUnit="kg"
+              fieldValue={form.molasses}
+              onValueChange={handleChemicalValueChange('molasses', 'kg')}
+              onUnitChange={handleChemicalUnitChange('molasses')}
+            />
+
+            <LogChemicalWithUnitInput
+              id="log-alkalinity"
+              label="Hóa chất nâng kiềm (NaHCO3 / NaOH)"
+              defaultUnit="kg"
+              fieldValue={form.alkalinity}
+              onValueChange={handleChemicalValueChange('alkalinity', 'kg')}
+              onUnitChange={handleChemicalUnitChange('alkalinity')}
             />
 
             {/* Sự cố / Ghi chú full width */}
@@ -985,7 +1110,7 @@ export default function DailyOperationLog() {
 
       {/* BẢNG DỮ LIỆU NHẬT KÝ (Hiển thị toàn bộ khi In nền trắng chữ đen) */}
       <section className="print-allow-break rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-4 print:bg-white print:text-black print:border-0 print:p-0 print:rounded-none">
-        <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-2">
+        <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-semibold text-slate-100">
               Bảng Theo Dõi Nhật Ký Vận Hành ({sortedLogs.length} bản ghi)
@@ -995,9 +1120,51 @@ export default function DailyOperationLog() {
               Nhật Ký&rdquo; để xuất khổ giấy A4 nằm ngang.
             </p>
           </div>
+
+          {/* Cụm nút chuyển đổi chế độ xem Bảng / Thẻ */}
+          <div
+            role="group"
+            aria-label="Chuyển đổi chế độ xem nhật ký"
+            className="print:hidden flex items-center gap-1 bg-slate-800 p-1 rounded-lg border border-slate-700 shrink-0"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              aria-pressed={viewMode === 'table'}
+              aria-label="Xem dạng bảng"
+              title="Xem dạng bảng"
+              className={`relative z-20 cursor-pointer select-none flex items-center justify-center p-2 rounded-md transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                viewMode === 'table'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <Table className="h-4 w-4 pointer-events-none" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('card')}
+              aria-pressed={viewMode === 'card'}
+              aria-label="Xem dạng thẻ"
+              title="Xem dạng thẻ"
+              className={`relative z-20 cursor-pointer select-none flex items-center justify-center p-2 rounded-md transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                viewMode === 'card'
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4 pointer-events-none" />
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80 print:overflow-visible print:border-black print:rounded-none">
+        <div
+          className={
+            viewMode === 'table'
+              ? 'overflow-x-auto pb-24 print:pb-0 w-full rounded-lg border border-slate-700/80 print:overflow-visible print:border-black print:rounded-none'
+              : 'hidden print:block print:overflow-visible print:border-black print:rounded-none'
+          }
+        >
           <table className="w-full min-w-[980px] text-left border-collapse text-sm print:min-w-0 print:w-full print:bg-white print:text-black">
             <thead>
               <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80 print:bg-white print:text-black print:border-black">
@@ -1088,10 +1255,19 @@ export default function DailyOperationLog() {
                       <td className="py-3 px-3 text-xs font-mono text-slate-300 border-r border-slate-700/50 print:text-black print:border-black">
                         <div className="space-y-0.5 whitespace-nowrap">
                           <div>
-                            PAC: {row.pac} · Poly: {row.polymer}
+                            PAC: {formatChemicalDisplay(row.pac, 'kg')} · Poly:{' '}
+                            {Number(row.polymer || 0)} kg
                           </div>
                           <div>
-                            Javen: {row.javen} L · Mật rỉ: {row.molasses}
+                            Khử trùng:{' '}
+                            {formatChemicalDisplay(
+                              row.disinfectant ?? row.javen,
+                              'Lít'
+                            )}{' '}
+                            · Mật rỉ: {formatChemicalDisplay(row.molasses, 'kg')}
+                          </div>
+                          <div>
+                            Kiềm: {formatChemicalDisplay(row.alkalinity, 'kg')}
                           </div>
                         </div>
                       </td>
@@ -1114,7 +1290,7 @@ export default function DailyOperationLog() {
                           </span>
                         )}
                       </td>
-                      <td className="no-print print:hidden py-2 px-3 text-right whitespace-nowrap">
+                      <td className="no-print print:hidden py-2 px-3 text-right whitespace-nowrap overflow-visible">
                         <div className="inline-flex items-center justify-end gap-2">
                           <button
                             type="button"
@@ -1122,10 +1298,10 @@ export default function DailyOperationLog() {
                             aria-label={`Sửa nhật ký ${formatDateTimeDisplay(
                               row.shiftDateTime
                             )}`}
-                            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium transition-colors"
+                            className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium transition-colors"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                            <span>Sửa</span>
+                            <Pencil className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                            <span className="pointer-events-none">Sửa</span>
                           </button>
                           <button
                             type="button"
@@ -1133,10 +1309,10 @@ export default function DailyOperationLog() {
                             aria-label={`Xóa nhật ký ${formatDateTimeDisplay(
                               row.shiftDateTime
                             )}`}
-                            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/15 text-xs font-medium transition-colors"
+                            className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/15 text-xs font-medium transition-colors"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span>Xóa</span>
+                            <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                            <span className="pointer-events-none">Xóa</span>
                           </button>
                         </div>
                       </td>
@@ -1147,6 +1323,165 @@ export default function DailyOperationLog() {
             </tbody>
           </table>
         </div>
+
+        {viewMode === 'card' && (
+          <div className="no-print print:hidden pb-24">
+            {sortedLogs.length === 0 ? (
+              <div className="py-8 px-4 text-center text-sm text-slate-400 rounded-lg border border-slate-700/80 bg-slate-900/40">
+                Chưa có bản ghi nhật ký nào. Hãy nhập thông số ở form phía trên và
+                bấm &ldquo;Lưu nhật ký&rdquo;.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {sortedLogs.map((row) => {
+                  const isPhAlert = row.ph < 6.0 || row.ph > 9.0;
+                  const isDoAlert = row.doMgL < 1.5;
+                  const isSvAlert = row.sv30 < 100 || row.sv30 > 600;
+                  const isRowEditing = editingId === row.id;
+
+                  return (
+                    <div
+                      key={row.id}
+                      className={`bg-slate-800 p-4 rounded-lg border shadow-sm flex flex-col justify-between gap-3 ${
+                        isRowEditing
+                          ? 'border-emerald-500 ring-1 ring-emerald-500/40'
+                          : 'border-slate-700'
+                      }`}
+                    >
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-700/80">
+                          <span className="font-mono text-xs font-semibold text-slate-100">
+                            {formatDateTimeDisplay(row.shiftDateTime)}
+                          </span>
+                          {row.isSynced ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500">
+                              <CloudUpload className="h-3.5 w-3.5" />
+                              Đã đồng bộ
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500">
+                              <CloudOff className="h-3.5 w-3.5" />
+                              Offline
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5 text-xs">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Lưu lượng Q</span>
+                            <span className="font-mono font-semibold tabular-nums text-emerald-400">
+                              {Number(row.flowQ || 0).toLocaleString('vi-VN')} m³/ng
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">pH</span>
+                            <span
+                              className={`font-mono font-semibold tabular-nums ${
+                                isPhAlert ? 'text-red-500' : 'text-emerald-500'
+                              }`}
+                            >
+                              {Number(row.ph || 0).toFixed(1)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">DO</span>
+                            <span
+                              className={`font-mono font-semibold tabular-nums ${
+                                isDoAlert ? 'text-red-500' : 'text-emerald-500'
+                              }`}
+                            >
+                              {Number(row.doMgL || 0).toFixed(1)} mg/L
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">SV30</span>
+                            <span
+                              className={`font-mono font-semibold tabular-nums ${
+                                isSvAlert ? 'text-red-500' : 'text-emerald-500'
+                              }`}
+                            >
+                              {Number(row.sv30 || 0).toFixed(0)} mL/L
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">PAC</span>
+                            <span className="text-slate-100 font-medium font-mono tabular-nums">
+                              {formatChemicalDisplay(row.pac, 'kg')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Polymer</span>
+                            <span className="text-slate-100 font-medium font-mono tabular-nums">
+                              {Number(row.polymer || 0)} kg
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Khử trùng</span>
+                            <span className="text-slate-100 font-medium font-mono tabular-nums">
+                              {formatChemicalDisplay(
+                                row.disinfectant ?? row.javen,
+                                'Lít'
+                              )}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Mật rỉ / Carbon</span>
+                            <span className="text-slate-100 font-medium font-mono tabular-nums">
+                              {formatChemicalDisplay(row.molasses, 'kg')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Nâng kiềm</span>
+                            <span className="text-slate-100 font-medium font-mono tabular-nums">
+                              {formatChemicalDisplay(row.alkalinity, 'kg')}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-slate-400">Người trực</span>
+                            <span className="text-slate-100 font-medium text-right">
+                              {row.operator}
+                            </span>
+                          </div>
+                          <div className="flex items-start justify-between gap-3 pt-1 border-t border-slate-700/60">
+                            <span className="text-slate-400 shrink-0">Ghi chú</span>
+                            <span className="text-slate-100 font-medium text-right">
+                              {row.notes || 'Bình thường'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-2 border-t border-slate-700/80">
+                        <button
+                          type="button"
+                          onClick={() => handleEdit(row)}
+                          aria-label={`Sửa nhật ký ${formatDateTimeDisplay(
+                            row.shiftDateTime
+                          )}`}
+                          className="relative z-20 cursor-pointer select-none flex-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-slate-600 text-slate-200 hover:bg-slate-700 text-xs font-medium transition-colors"
+                        >
+                          <Pencil className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                          <span className="pointer-events-none">Sửa</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(row)}
+                          aria-label={`Xóa nhật ký ${formatDateTimeDisplay(
+                            row.shiftDateTime
+                          )}`}
+                          className="relative z-20 cursor-pointer select-none flex-1 inline-flex items-center justify-center gap-1.5 min-h-[44px] px-3 py-2 rounded-lg border border-red-500/40 text-red-500 hover:bg-red-500/15 text-xs font-medium transition-colors"
+                        >
+                          <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                          <span className="pointer-events-none">Xóa</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* MODAL HƯỚNG DẪN LẤY LINK GOOGLE SHEETS (Ẩn khi in) */}
@@ -1185,7 +1520,7 @@ export default function DailyOperationLog() {
             </div>
 
             {/* Modal Body (cuộn dọc trên thiết bị nhỏ) */}
-            <div className="overflow-y-auto p-5 sm:p-6 space-y-5 text-sm leading-relaxed text-slate-200">
+            <div className="overflow-y-auto p-5 sm:p-6 pb-24 space-y-5 text-sm leading-relaxed text-slate-200">
               {/* Bước 1 */}
               <div className="rounded-xl bg-slate-900/70 border border-slate-700/80 p-4 space-y-2">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-sky-300">
@@ -1194,11 +1529,11 @@ export default function DailyOperationLog() {
                 <p className="text-slate-300">
                   Tạo một file Google Sheets mới trên Google Drive. Tại{' '}
                   <strong className="text-slate-100">hàng 1</strong> (từ cột A đến
-                  cột I), nhập lần lượt tên 9 cột tiêu đề theo đúng thứ tự sau:
+                  cột L), nhập lần lượt tên 12 cột tiêu đề theo đúng thứ tự sau:
                 </p>
                 <div className="rounded-lg bg-slate-950 border border-slate-700/80 px-3.5 py-2.5 font-mono text-xs text-emerald-300 overflow-x-auto">
-                  Ngày giờ | Lưu lượng | pH | DO | SV30 | PAC | Polymer | Ghi
-                  chú | Người trực
+                  Ngày giờ | Lưu lượng | pH | DO | SV30 | PAC | Polymer | Khử
+                  trùng | Mật rỉ | Nâng kiềm | Người trực | Ghi chú
                 </div>
               </div>
 
@@ -1328,12 +1663,7 @@ export default function DailyOperationLog() {
   );
 }
 
-function LogNumberInput({ id, label, unit, value, max, step, onChange }) {
-  const displayVal =
-    value === 0 || value === '' || value === null || Number.isNaN(Number(value))
-      ? ''
-      : value;
-
+function LogNumberInput({ id, label, unit, value, onChange }) {
   return (
     <div>
       <label
@@ -1345,11 +1675,9 @@ function LogNumberInput({ id, label, unit, value, max, step, onChange }) {
       <div className="relative flex items-center">
         <input
           id={id}
-          type="number"
-          min={0}
-          max={max}
-          step={step}
-          value={displayVal}
+          type="text"
+          inputMode="decimal"
+          value={value ?? ''}
           onChange={onChange}
           placeholder="0"
           className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-sm font-medium text-slate-100 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 transition-colors"
@@ -1357,6 +1685,60 @@ function LogNumberInput({ id, label, unit, value, max, step, onChange }) {
         <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
           {unit}
         </span>
+      </div>
+    </div>
+  );
+}
+
+function LogChemicalWithUnitInput({
+  id,
+  label,
+  defaultUnit = 'kg',
+  fieldValue,
+  onValueChange,
+  onUnitChange,
+}) {
+  const unit =
+    fieldValue?.unit === 'Lít' || fieldValue?.unit === 'kg'
+      ? fieldValue.unit
+      : defaultUnit;
+  const displayVal =
+    typeof fieldValue?.value === 'string'
+      ? fieldValue.value
+      : toInputString(fieldValue?.value);
+
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="block text-sm font-medium text-slate-200 mb-2"
+      >
+        {label}
+      </label>
+      <div className="flex items-stretch rounded-lg bg-slate-900 border border-slate-700 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-500/30 transition-colors overflow-hidden">
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          value={displayVal}
+          onChange={onValueChange}
+          placeholder="0"
+          className="flex-1 min-w-0 min-h-[44px] bg-transparent px-3.5 py-2 font-mono text-sm font-medium text-slate-100 tabular-nums focus:outline-none"
+        />
+        <select
+          id={`${id}-unit`}
+          aria-label={`Đơn vị ${label}`}
+          value={unit}
+          onChange={onUnitChange}
+          className="min-h-[44px] px-3 py-2 bg-slate-800 border-l border-slate-700 font-mono text-xs font-semibold text-emerald-400 focus:outline-none focus:bg-slate-700 cursor-pointer shrink-0"
+        >
+          <option value="kg" className="bg-slate-900 text-slate-100">
+            kg
+          </option>
+          <option value="Lít" className="bg-slate-900 text-slate-100">
+            Lít
+          </option>
+        </select>
       </div>
     </div>
   );

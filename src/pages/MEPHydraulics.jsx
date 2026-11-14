@@ -14,6 +14,14 @@ import {
   StatusBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const MEP_EQUIPMENT_LABELS = {
+  pipe: 'Tuyến Ống thủy lực',
+  pump: 'Trạm Bơm công nghệ',
+  hopper: 'Phễu thu bùn Inox',
+  eductor: 'Bộ trộn tĩnh & Eductor',
+};
 
 const MEP_TABS = [
   { id: 'pipe', label: 'Ống thủy lực', icon: GitCommitHorizontal },
@@ -387,7 +395,7 @@ export default function MEPHydraulics() {
           </p>
         </div>
 
-        <div className="rounded-xl bg-slate-800 border border-slate-700/80 px-4 py-3 shrink-0">
+        <div className="rounded-xl bg-slate-800 border border-slate-700/80 px-4 py-3 shrink-0 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <div className="text-xs text-slate-400">
             Đồng bộ lưu lượng hệ thống (globalQ)
           </div>
@@ -405,7 +413,7 @@ export default function MEPHydraulics() {
       <div
         role="tablist"
         aria-label="Hạng mục cơ điện thủy lực"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {MEP_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -417,14 +425,14 @@ export default function MEPHydraulics() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -433,7 +441,7 @@ export default function MEPHydraulics() {
       {/* TAB 1: ỐNG THỦY LỰC */}
       {activeTab === 'pipe' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -577,7 +585,7 @@ export default function MEPHydraulics() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -597,7 +605,7 @@ export default function MEPHydraulics() {
                     dn: recommendedPipeRow.dn,
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Chọn DN tối ưu theo gợi ý</span>
@@ -715,7 +723,7 @@ export default function MEPHydraulics() {
       {/* TAB 2: BƠM CÔNG NGHỆ */}
       {activeTab === 'pump' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -923,7 +931,7 @@ export default function MEPHydraulics() {
       {/* TAB 3: PHỄU THU BÙN INOX */}
       {activeTab === 'hopper' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1039,7 +1047,7 @@ export default function MEPHydraulics() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1063,7 +1071,7 @@ export default function MEPHydraulics() {
                     h: hopper.heightH,
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -1245,7 +1253,7 @@ export default function MEPHydraulics() {
       {/* TAB 4: BỘ TRỘN TĨNH & EDUCTOR */}
       {activeTab === 'eductor' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1432,6 +1440,12 @@ export default function MEPHydraulics() {
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_mephydraulics_${activeTab}`}
+        moduleLabel={MEP_EQUIPMENT_LABELS[activeTab] || 'Hạng mục MEP & Ống'}
+        storageKey={`omnieco_equipments_mephydraulics_${activeTab}`}
+      />
     </div>
   );
 }

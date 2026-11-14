@@ -43,13 +43,13 @@
   body {
     background: #ffffff !important;
     background-color: #ffffff !important;
-    color: #0f172a !important;
+    color: #111827 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   aside,
-  header,
+  header:not(.print\:block),
   .no-print,
   [role="tablist"],
   main button {
@@ -58,51 +58,46 @@
 
   .print-only {
     display: block !important;
-    background: #ffffff !important;
-    color: #0f172a !important;
-    border-bottom: 2px solid #0f172a !important;
-    padding-bottom: 10px !important;
-    margin-bottom: 16px !important;
+  }
+
+  .print-logo-badge {
+    background-color: #0f172a !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 
   main {
     width: 100% !important;
     max-width: 100% !important;
-    margin: 0 auto !important;
+    margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
+    color: #111827 !important;
   }
 
-  main > div {
-    max-width: 100% !important;
-    margin: 0 auto !important;
+  /* Zero-specificity fallback colors for dark-mode Tailwind classes inside main so print: classes win */
+  :where(main) :where(.text-slate-100, .text-slate-200) {
+    color: #111827;
   }
 
-  /* Ép nền trắng chữ đen cho toàn bộ Card, Input, Select, Bảng */
-  main section,
-  main div,
-  main table,
-  main th,
-  main td {
-    background-color: #ffffff !important;
-    color: #0f172a !important;
-    border-color: #cbd5e1 !important;
+  :where(main) :where(.text-slate-300, .text-slate-400) {
+    color: #374151;
+  }
+
+  :where(main) :where(.bg-slate-900, .bg-slate-900\/90, .bg-slate-900\/80, .bg-slate-900\/60, .bg-slate-900\/50, .bg-slate-900\/40) {
+    background-color: #f9fafb;
+  }
+
+  :where(main) :where(.border-slate-700, .border-slate-700\/80, .border-slate-700\/70, .border-slate-700\/60, .border-slate-800) {
+    border-color: #d1d5db;
   }
 
   main input,
-  main select {
+  main select,
+  main textarea {
     background-color: #ffffff !important;
-    color: #0f172a !important;
-    border: 1px solid #94a3b8 !important;
-  }
-
-  main h1,
-  main h2,
-  main h3,
-  main label,
-  main p,
-  main span {
-    color: #0f172a !important;
+    color: #111827 !important;
+    border: 1px solid #9ca3af !important;
   }
 
   /* Giữ rõ trạng thái kiểm tra ngược Đạt / Cảnh báo đỏ khi in */
@@ -121,11 +116,13 @@
   }
 
   .text-red-400,
+  .text-red-500,
   .text-red-200 {
     color: #b91c1c !important;
   }
 
   .text-emerald-400,
+  .text-emerald-500,
   .text-emerald-200 {
     color: #047857 !important;
   }
@@ -142,15 +139,9 @@
     page-break-inside: auto;
   }
 
-  tr,
-  section {
+  tr {
     break-inside: avoid;
     page-break-inside: avoid;
-  }
-
-  section.print-allow-break {
-    break-inside: auto !important;
-    page-break-inside: auto !important;
   }
 
   .print-log-sheet .text-red-500,

@@ -1,34 +1,39 @@
 import { useState } from 'react';
 import {
-  Droplets,
-  Filter,
   FlaskConical,
   Layers,
   RotateCcw,
   Sparkles,
+  Wind,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import {
+  CheckTable,
+  DecimalInput,
   NumberField,
   StatusBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const PHYSICO_EQUIPMENT_LABELS = {
+  coagulation: 'Bể Keo tụ',
+  flocculation: 'Bể Tạo bông',
+  sedimentation: 'Bể Lắng hóa lý',
+  daf: 'Bể Tuyển nổi DAF',
+};
 
 const PHYSICO_TABS = [
   { id: 'coagulation', label: 'Keo tụ', icon: FlaskConical },
   { id: 'flocculation', label: 'Tạo bông', icon: Sparkles },
   { id: 'sedimentation', label: 'Lắng hóa lý', icon: Layers },
-  { id: 'pressure_filter', label: 'Lọc áp lực', icon: Filter },
+  { id: 'daf', label: 'Tuyển nổi DAF', icon: Wind },
 ];
 
 const TANK_SHAPES = [
   { value: 'Vuông', label: 'Vuông (a × a × H)' },
   { value: 'Tròn', label: 'Tròn (Ø D × H)' },
   { value: 'Chữ nhật', label: 'Chữ nhật (L × W × H)' },
-];
-
-const MARKET_DIAMETERS_M = [
-  0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.5,
 ];
 
 const STANDARD_MOTORS_KW = [
@@ -149,20 +154,17 @@ export default function PhysicochemicalCalc() {
     sedimentation: null,
   });
 
-  // --- Tab 4: Lọc áp lực ---
-  const [filter, setFilter] = useState({
-    numTanks: 2,
-    shape: 'Tròn', // Mặc định bồn Tròn
-    filtrationRateTarget: 8.0, // m/h (chuẩn 5 - 12)
-    filtrationRateMax: 12.0,
-    backwashWaterRate: 12.0, // L/s.m2
-    backwashAirRate: 15.0, // L/s.m2
-    gravelHeight: 0.3, // Sỏi đỡ (1600 kg/m3)
-    sandHeight: 0.7, // Cát thạch anh (1500 kg/m3)
-    carbonHeight: 0.5, // Than hoạt tính (500 kg/m3)
-    manganeseHeight: 0.0, // Quặng Mangan (1800 kg/m3) - tùy chọn thêm
+  // --- Tab 4: Tuyển nổi áp lực DAF ---
+  const [dafParams, setDafParams] = useState({
+    shape: 'Chữ nhật',
+    retentionMin: 25,
+    recyclePct: 30,
+    surfaceLoadMax: 8.0, // m3/m2.h (chuẩn 5 - 10)
+    saturatorPressureBar: 5.0,
+    depthH: 2.2,
+    ratioLW: 2.0,
   });
-  const [filterDiameterOverrideM, setFilterDiameterOverrideM] = useState(null);
+  const [dafOverride, setDafOverride] = useState(null);
 
   const qMaxM3s = hydraulics.qMaxHour / 3600;
 
@@ -280,76 +282,48 @@ export default function PhysicochemicalCalc() {
     };
   };
 
-  // --- Pressure Filter Calculations ---
-  const nFilterTanks = Math.max(1, Number(filter.numTanks) || 1);
-  const qPerFilterHour = hydraulics.qMaxHour / nFilterTanks;
-  const filterAreaTheo =
-    filter.filtrationRateTarget > 0
-      ? qPerFilterHour / filter.filtrationRateTarget
-      : 0;
-  const filterDiaTheo = Math.sqrt((4 * filterAreaTheo) / Math.PI);
-  const recommendedMarketDia =
-    MARKET_DIAMETERS_M.find((d) => d >= filterDiaTheo) ??
-    roundUpToStep(filterDiaTheo, 0.2);
+  // --- DAF Calculations ---
+  const qDafRecycleHour = hydraulics.qHour * (dafParams.recyclePct / 100);
+  const qDafTotalHour = hydraulics.qHour + qDafRecycleHour;
+  const dafVolTheo = qDafTotalHour * (dafParams.retentionMin / 60);
+  const dafTheo = interpolateTank(
+    dafVolTheo,
+    dafParams.depthH,
+    dafParams.shape,
+    dafParams.ratioLW
+  );
+  const activeDafOv =
+    dafOverride ?? buildRecommendedOverride(dafTheo, dafParams.shape, 0);
+  const dafActual = computeActualTank(activeDafOv, dafParams.shape);
+  const dafRetentionActual =
+    qDafTotalHour > 0 ? (dafActual.volume / qDafTotalHour) * 60 : 0;
+  const dafSurfaceLoadTheo =
+    dafTheo.area > 0 ? qDafTotalHour / dafTheo.area : 0;
+  const dafSurfaceLoadActual =
+    dafActual.area > 0 ? qDafTotalHour / dafActual.area : 0;
+  const isDafVolOk =
+    hydraulics.qDay > 0 && dafVolTheo > 0 && dafActual.volume >= dafVolTheo;
+  const isDafLoadOk =
+    hydraulics.qDay > 0 && dafSurfaceLoadActual <= dafParams.surfaceLoadMax;
+  const isDafAllOk = isDafVolOk && isDafLoadOk;
 
-  const activeFilterDia =
-    filterDiameterOverrideM !== null
-      ? Math.max(0, Number(filterDiameterOverrideM) || 0)
-      : recommendedMarketDia;
-  const filterAreaActual = (Math.PI * activeFilterDia * activeFilterDia) / 4;
-  const filterVelActual =
-    filterAreaActual > 0 ? qPerFilterHour / filterAreaActual : 0;
+  const handleDafShapeChange = (nextShape) => {
+    setDafParams((p) => ({ ...p, shape: nextShape }));
+    const nextTheo = interpolateTank(
+      dafVolTheo,
+      dafParams.depthH,
+      nextShape,
+      dafParams.ratioLW
+    );
+    setDafOverride(buildRecommendedOverride(nextTheo, nextShape, 0));
+  };
 
-  const isFilterVelOk =
-    hydraulics.qDay > 0 &&
-    filterVelActual > 0 &&
-    filterVelActual <= filter.filtrationRateMax;
-  const isFilterDiaOk =
-    hydraulics.qDay > 0 && activeFilterDia >= filterDiaTheo;
-
-  const backwashPumpLs = filterAreaActual * filter.backwashWaterRate;
-  const backwashPumpM3h = backwashPumpLs * 3.6;
-  const backwashAirLs = filterAreaActual * filter.backwashAirRate;
-  const backwashAirM3min = backwashAirLs * 0.06;
-
-  // Media Layer Breakdown (1 tank & Total N tanks)
-  const mediaLayers = [
-    {
-      name: 'Sỏi đỡ (Đá lọc phân phối)',
-      heightM: Math.max(0, Number(filter.gravelHeight) || 0),
-      densityKgM3: 1600,
-    },
-    {
-      name: 'Cát thạch anh lọc tinh',
-      heightM: Math.max(0, Number(filter.sandHeight) || 0),
-      densityKgM3: 1500,
-    },
-    {
-      name: 'Than hoạt tính hấp phụ',
-      heightM: Math.max(0, Number(filter.carbonHeight) || 0),
-      densityKgM3: 500,
-    },
-    {
-      name: 'Quặng Mangan (khử Fe/Mn)',
-      heightM: Math.max(0, Number(filter.manganeseHeight) || 0),
-      densityKgM3: 1800,
-    },
-  ].map((layer) => {
-    const volOneTank = filterAreaActual * layer.heightM;
-    const massOneTank = volOneTank * layer.densityKgM3;
-    return {
-      ...layer,
-      volOneTank,
-      massOneTank,
-      volTotal: volOneTank * nFilterTanks,
-      massTotal: massOneTank * nFilterTanks,
-    };
-  });
-
-  const totalMediaHeight = mediaLayers.reduce((s, l) => s + l.heightM, 0);
-  const totalMediaVolOne = mediaLayers.reduce((s, l) => s + l.volOneTank, 0);
-  const totalMediaMassOne = mediaLayers.reduce((s, l) => s + l.massOneTank, 0);
-  const totalMediaMassAll = mediaLayers.reduce((s, l) => s + l.massTotal, 0);
+  const updateDafOv = (field, val) => {
+    setDafOverride({
+      ...activeDafOv,
+      [field]: val,
+    });
+  };
 
   const renderMixOrSedTab = (tabId) => {
     const m = getMixTankModel(tabId);
@@ -405,7 +379,7 @@ export default function PhysicochemicalCalc() {
     return (
       <div className="space-y-6">
         {/* 1. Theoretical Parameters & Shape */}
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
             <div>
               <h2 className="text-lg font-semibold text-slate-100">
@@ -558,7 +532,7 @@ export default function PhysicochemicalCalc() {
 
         {/* 2. Theoretical Dimensions & Motor Power */}
         <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
             <div className="text-xs text-slate-400">
               Kích thước nội suy lý thuyết ({params.shape})
             </div>
@@ -582,7 +556,7 @@ export default function PhysicochemicalCalc() {
             </div>
           </div>
 
-          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
             <div className="text-xs text-slate-400">
               Công suất động cơ khuấy lý thuyết
             </div>
@@ -595,7 +569,7 @@ export default function PhysicochemicalCalc() {
             </div>
           </div>
 
-          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
             <div className="text-xs text-slate-400">
               Gradient vận tốc thực tế (G_thực)
             </div>
@@ -613,7 +587,7 @@ export default function PhysicochemicalCalc() {
         </section>
 
         {/* 3. Override & Reverse Verification */}
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
             <div>
               <h2 className="text-lg font-semibold text-slate-100">
@@ -628,7 +602,7 @@ export default function PhysicochemicalCalc() {
             <button
               type="button"
               onClick={handleSnap}
-              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
               <span>Làm tròn theo lý thuyết</span>
@@ -727,90 +701,36 @@ export default function PhysicochemicalCalc() {
             summaryRight={`${actual.volume.toFixed(2)} m³ · ${gActual.toFixed(0)} s⁻¹`}
           />
 
-          <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-            <table className="w-full min-w-[600px] text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                  <th className="py-3 px-4">Thông số kiểm tra ngược</th>
-                  <th className="py-3 px-4 text-right">Chuẩn / Lý thuyết</th>
-                  <th className="py-3 px-4 text-right">Thực tế chọn</th>
-                  <th className="py-3 px-4 text-right">Đánh giá</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/60">
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">Thể tích bể (V)</td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    ≥ {vTheo.toFixed(2)} m³
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                      isVolOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {actual.volume.toFixed(2)} m³
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-medium ${
-                      isVolOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {isVolOk ? 'Đạt chuẩn' : 'Thiếu thể tích'}
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    Gradient vận tốc (G)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {m.gMin} – {m.gMax} s⁻¹
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                      isGOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {gActual.toFixed(0)} s⁻¹
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-medium ${
-                      isGOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {isGOk
-                      ? 'Đạt chuẩn'
-                      : gActual < m.gMin
-                      ? 'G quá yếu'
-                      : 'G quá lớn'}
-                  </td>
-                </tr>
-
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    {extra.metricLabel}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {extra.metricTheo}
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                      extra.extraOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {extra.metricActual}
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-medium ${
-                      extra.extraOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {extra.extraStatus}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <CheckTable
+            title="Bảng kiểm tra ngược thiết kế"
+            rows={[
+              {
+                name: 'Thể tích bể (V)',
+                standard: `≥ ${vTheo.toFixed(2)} m³`,
+                actual: `${actual.volume.toFixed(2)} m³`,
+                ok: isVolOk,
+                statusText: isVolOk ? 'Đạt chuẩn' : 'Thiếu thể tích',
+              },
+              {
+                name: 'Gradient vận tốc (G)',
+                standard: `${m.gMin} – ${m.gMax} s⁻¹`,
+                actual: `${gActual.toFixed(0)} s⁻¹`,
+                ok: isGOk,
+                statusText: isGOk
+                  ? 'Đạt chuẩn'
+                  : gActual < m.gMin
+                  ? 'G quá yếu'
+                  : 'G quá lớn',
+              },
+              {
+                name: extra.metricLabel,
+                standard: extra.metricTheo,
+                actual: extra.metricActual,
+                ok: extra.extraOk,
+                statusText: extra.extraStatus,
+              },
+            ]}
+          />
         </section>
       </div>
     );
@@ -822,15 +742,15 @@ export default function PhysicochemicalCalc() {
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 text-balance">
-            Cụm Xử Lý Hóa Lý & Lọc Áp Lực
+            Cụm Xử Lý Hóa Lý (Xử Lý Bậc 1)
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl">
             Tính toán khuấy trộn keo tụ/tạo bông theo Gradient vận tốc G, lắng
-            hóa lý và bóc tách vật liệu lọc cho bồn lọc áp lực.
+            hóa lý và tuyển nổi áp lực DAF tách dầu mỡ, cặn lơ lửng.
           </p>
         </div>
 
-        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5">
+        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="physico-global-q"
             className="flex items-center justify-between text-xs font-medium text-slate-400 mb-1.5"
@@ -841,19 +761,10 @@ export default function PhysicochemicalCalc() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="physico-global-q"
-              type="number"
-              min="0"
-              step="10"
-              value={globalQ === 0 ? '' : globalQ}
-              onChange={(e) =>
-                setGlobalQ(
-                  e.target.value === ''
-                    ? 0
-                    : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={globalQ}
+              onValueChange={setGlobalQ}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
@@ -867,7 +778,7 @@ export default function PhysicochemicalCalc() {
       <div
         role="tablist"
         aria-label="Các công trình hóa lý"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {PHYSICO_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -879,402 +790,360 @@ export default function PhysicochemicalCalc() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
       </div>
 
       {/* TAB CONTENT */}
-      {activeTab !== 'pressure_filter' ? (
+      {activeTab !== 'daf' ? (
         renderMixOrSedTab(activeTab)
       ) : (
         <div className="space-y-6">
-          {/* 1. Pressure Filter Design & Media Heights */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          {/* 1. DAF Design Parameters & Shape */}
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
-                  1. Bồn Lọc Áp Lực Đa Tầng (Mặc định bồn Tròn)
+                  1. Bể Tuyển Nổi Áp Lực DAF — Thông số thiết kế &amp; Hình dạng
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Lưu lượng qua mỗi bồn: {qPerFilterHour.toFixed(2)} m³/h (tổng{' '}
-                  {nFilterTanks} bồn song song)
+                  Tính theo tổng lưu lượng qua ngăn tuyển nổi (Q_tb + Q_tuần hoàn
+                  bão hòa khí)
                 </p>
               </div>
               <span className="font-mono text-xs text-emerald-400 tabular-nums">
-                D_lt = {filterDiaTheo.toFixed(2)} m (Ø
-                {Math.round(filterDiaTheo * 1000)} mm)
+                Q_DAF = {qDafTotalHour.toFixed(2)} m³/h · V_lt ={' '}
+                {dafVolTheo.toFixed(2)} m³
               </span>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
               <div>
                 <label
-                  htmlFor="pf-shape"
+                  htmlFor="daf-shape"
                   className="block text-sm font-medium text-slate-200 mb-2"
                 >
-                  Hình dạng bồn lọc áp lực
+                  Hình dạng công trình
                 </label>
                 <select
-                  id="pf-shape"
-                  value={filter.shape}
-                  onChange={(e) =>
-                    setFilter((p) => ({ ...p, shape: e.target.value }))
-                  }
+                  id="daf-shape"
+                  value={dafParams.shape}
+                  onChange={(e) => handleDafShapeChange(e.target.value)}
                   className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
                 >
-                  <option value="Tròn">Bồn trụ Tròn (Mặc định)</option>
-                </select>
-              </div>
-
-              <NumberField
-                id="pf-num"
-                label="Số lượng bồn lọc song song"
-                unit="bồn"
-                value={filter.numTanks}
-                min={1}
-                max={12}
-                step={1}
-                onChange={(v) =>
-                  setFilter((p) => ({
-                    ...p,
-                    numTanks: Math.max(1, Math.round(v)),
-                  }))
-                }
-              />
-
-              <NumberField
-                id="pf-vel"
-                label="Tốc độ lọc thiết kế (v_lọc)"
-                unit="m/h"
-                value={filter.filtrationRateTarget}
-                min={4}
-                max={15}
-                step={0.5}
-                onChange={(v) =>
-                  setFilter((p) => ({ ...p, filtrationRateTarget: v }))
-                }
-              />
-
-              <NumberField
-                id="pf-vel-max"
-                label="Giới hạn tốc độ lọc tối đa"
-                unit="m/h"
-                value={filter.filtrationRateMax}
-                min={6}
-                max={18}
-                step={0.5}
-                onChange={(v) =>
-                  setFilter((p) => ({ ...p, filtrationRateMax: v }))
-                }
-              />
-
-              <NumberField
-                id="pf-bw-water"
-                label="Cường độ nước rửa lọc"
-                unit="L/s·m²"
-                value={filter.backwashWaterRate}
-                min={6}
-                max={20}
-                step={0.5}
-                onChange={(v) =>
-                  setFilter((p) => ({ ...p, backwashWaterRate: v }))
-                }
-              />
-
-              <NumberField
-                id="pf-bw-air"
-                label="Cường độ gió sục rửa lọc"
-                unit="L/s·m²"
-                value={filter.backwashAirRate}
-                min={8}
-                max={25}
-                step={0.5}
-                onChange={(v) =>
-                  setFilter((p) => ({ ...p, backwashAirRate: v }))
-                }
-              />
-            </div>
-
-            {/* Mandatory Media Layer Heights */}
-            <div className="pt-4 border-t border-slate-700/70 space-y-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h3 className="text-sm font-semibold text-slate-100">
-                  Chiều cao từng lớp vật liệu lọc (m)
-                </h3>
-                <span className="text-xs font-mono text-slate-400 tabular-nums">
-                  Tổng chiều cao lớp lọc = {totalMediaHeight.toFixed(2)} m ·
-                  Chiều cao thân bồn dự kiến ≈{' '}
-                  {(totalMediaHeight + 1.0).toFixed(2)} m
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-                <NumberField
-                  id="pf-h-gravel"
-                  label="Sỏi đỡ (1.600 kg/m³)"
-                  unit="m"
-                  value={filter.gravelHeight}
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  onChange={(v) => setFilter((p) => ({ ...p, gravelHeight: v }))}
-                />
-                <NumberField
-                  id="pf-h-sand"
-                  label="Cát thạch anh (1.500 kg/m³)"
-                  unit="m"
-                  value={filter.sandHeight}
-                  min={0}
-                  max={2.0}
-                  step={0.05}
-                  onChange={(v) => setFilter((p) => ({ ...p, sandHeight: v }))}
-                />
-                <NumberField
-                  id="pf-h-carbon"
-                  label="Than hoạt tính (500 kg/m³)"
-                  unit="m"
-                  value={filter.carbonHeight}
-                  min={0}
-                  max={2.0}
-                  step={0.05}
-                  onChange={(v) => setFilter((p) => ({ ...p, carbonHeight: v }))}
-                />
-                <NumberField
-                  id="pf-h-mn"
-                  label="Quặng Mangan (1.800 kg/m³)"
-                  unit="m"
-                  value={filter.manganeseHeight}
-                  min={0}
-                  max={1.5}
-                  step={0.05}
-                  onChange={(v) =>
-                    setFilter((p) => ({ ...p, manganeseHeight: v }))
-                  }
-                />
-              </div>
-            </div>
-          </section>
-
-          {/* 2. Market Diameter Override & Pump/Blower Sizing */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
-            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-100">
-                  2. Chọn Đường kính bồn thị trường & Kiểm tra ngược
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Đường kính lý thuyết: {filterDiaTheo.toFixed(2)} m (F_lt ={' '}
-                  {filterAreaTheo.toFixed(2)} m²). Chốt đường kính bồn có sẵn để
-                  tính ngược tốc độ lọc, vật liệu và bơm/quạt rửa lọc.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setFilterDiameterOverrideM(recommendedMarketDia)}
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
-              >
-                <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
-                <span>Chọn Ø chuẩn ({recommendedMarketDia} m)</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label
-                  htmlFor="pf-market-preset"
-                  className="block text-sm font-medium text-slate-200 mb-2"
-                >
-                  Chọn nhanh đường kính bồn tiêu chuẩn
-                </label>
-                <select
-                  id="pf-market-preset"
-                  value={
-                    MARKET_DIAMETERS_M.includes(activeFilterDia)
-                      ? activeFilterDia
-                      : ''
-                  }
-                  onChange={(e) => {
-                    if (e.target.value !== '') {
-                      setFilterDiameterOverrideM(Number(e.target.value));
-                    }
-                  }}
-                  className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-                >
-                  <option value="">-- Tùy chỉnh nhập tay --</option>
-                  {MARKET_DIAMETERS_M.map((d) => (
-                    <option key={d} value={d}>
-                      Bồn Ø {Math.round(d * 1000)} mm ({d.toFixed(1)} m)
+                  {TANK_SHAPES.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
                     </option>
                   ))}
                 </select>
               </div>
 
               <NumberField
-                id="pf-ov-dia"
-                label="Đường kính bồn chọn thực tế (D_chọn)"
+                id="daf-retention"
+                label="Thời gian lưu ngăn tuyển nổi (t)"
+                unit="phút"
+                value={dafParams.retentionMin}
+                min={10}
+                max={60}
+                step={1}
+                onChange={(v) =>
+                  setDafParams((p) => ({ ...p, retentionMin: v }))
+                }
+              />
+
+              <NumberField
+                id="daf-recycle"
+                label="Tỷ lệ tuần hoàn bão hòa khí (R)"
+                unit="%"
+                value={dafParams.recyclePct}
+                min={10}
+                max={100}
+                step={5}
+                onChange={(v) => setDafParams((p) => ({ ...p, recyclePct: v }))}
+              />
+
+              <NumberField
+                id="daf-slr-max"
+                label="Giới hạn tải trọng bề mặt (q₀,max)"
+                unit="m³/m²·h"
+                value={dafParams.surfaceLoadMax}
+                min={3}
+                max={15}
+                step={0.5}
+                onChange={(v) =>
+                  setDafParams((p) => ({ ...p, surfaceLoadMax: v }))
+                }
+              />
+
+              <NumberField
+                id="daf-pressure"
+                label="Áp suất bồn bão hòa khí"
+                unit="bar"
+                value={dafParams.saturatorPressureBar}
+                min={3}
+                max={7}
+                step={0.5}
+                onChange={(v) =>
+                  setDafParams((p) => ({ ...p, saturatorPressureBar: v }))
+                }
+              />
+
+              <NumberField
+                id="daf-h"
+                label="Chiều sâu công tác lý thuyết (H)"
                 unit="m"
-                value={activeFilterDia}
-                min={0.2}
-                max={6.0}
+                value={dafParams.depthH}
+                min={1.2}
+                max={4.5}
                 step={0.1}
-                onChange={(v) => setFilterDiameterOverrideM(v)}
+                onChange={(v) => setDafParams((p) => ({ ...p, depthH: v }))}
+              />
+
+              {dafParams.shape === 'Chữ nhật' && (
+                <NumberField
+                  id="daf-ratio"
+                  label="Tỷ lệ Dài / Rộng (L/W)"
+                  unit="L/W"
+                  value={dafParams.ratioLW}
+                  min={1}
+                  max={5}
+                  step={0.1}
+                  onChange={(v) => setDafParams((p) => ({ ...p, ratioLW: v }))}
+                />
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-700/70 text-xs font-mono text-slate-400">
+              Q_DAF = {hydraulics.qHour.toFixed(2)} × (1 + {dafParams.recyclePct}
+              %) = {qDafTotalHour.toFixed(2)} m³/h · V_lt = Q_DAF × (
+              {dafParams.retentionMin}/60) = {dafVolTheo.toFixed(2)} m³
+            </div>
+          </section>
+
+          {/* 2. Theoretical KPI Cards */}
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Kích thước nội suy lý thuyết ({dafParams.shape})
+              </div>
+              {dafParams.shape === 'Chữ nhật' && (
+                <div className="mt-2 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
+                  {dafTheo.L.toFixed(2)} × {dafTheo.W.toFixed(2)} ×{' '}
+                  {dafTheo.H.toFixed(2)} m
+                </div>
+              )}
+              {dafParams.shape === 'Vuông' && (
+                <div className="mt-2 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
+                  {dafTheo.a.toFixed(2)} × {dafTheo.a.toFixed(2)} ×{' '}
+                  {dafTheo.H.toFixed(2)} m
+                </div>
+              )}
+              {dafParams.shape === 'Tròn' && (
+                <div className="mt-2 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
+                  Ø {dafTheo.D.toFixed(2)} × {dafTheo.H.toFixed(2)} m
+                </div>
+              )}
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                V_lt = {dafVolTheo.toFixed(2)} m³ · F_lt ={' '}
+                {dafTheo.area.toFixed(2)} m²
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Lưu lượng bơm tuần hoàn bão hòa khí
+              </div>
+              <div className="mt-2 font-mono text-xl font-semibold text-slate-100 tabular-nums">
+                {qDafRecycleHour.toFixed(2)} m³/giờ
+              </div>
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                Áp suất làm việc {dafParams.saturatorPressureBar.toFixed(1)} bar
+                ({dafParams.recyclePct}% Q)
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Tải trọng bề mặt tuyển nổi thực
+              </div>
+              <div
+                className={`mt-2 font-mono text-xl font-semibold tabular-nums ${
+                  isDafLoadOk ? 'text-emerald-400' : 'text-red-400'
+                }`}
+              >
+                {dafSurfaceLoadActual.toFixed(2)} m³/m²·h
+              </div>
+              <div className="mt-1 text-xs text-slate-400">
+                Giới hạn chuẩn ≤ {dafParams.surfaceLoadMax.toFixed(1)} m³/m²·h
+              </div>
+            </div>
+          </section>
+
+          {/* 3. Override & Reverse Verification */}
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  2. Chốt kích thước thi công &amp; Kiểm tra ngược DAF
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Nhập đè kích thước chọn ({dafParams.shape}) để kiểm tra ngược
+                  thể tích thực, thời gian lưu và tải trọng bề mặt tuyển nổi.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setDafOverride(
+                    buildRecommendedOverride(dafTheo, dafParams.shape, 0)
+                  )
+                }
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Làm tròn theo lý thuyết</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {dafParams.shape === 'Chữ nhật' && (
+                <>
+                  <NumberField
+                    id="daf-ov-L"
+                    label="Chiều dài chọn (L)"
+                    unit="m"
+                    value={activeDafOv.L}
+                    min={0}
+                    max={50}
+                    step={0.1}
+                    onChange={(v) => updateDafOv('L', v)}
+                  />
+                  <NumberField
+                    id="daf-ov-W"
+                    label="Chiều rộng chọn (W)"
+                    unit="m"
+                    value={activeDafOv.W}
+                    min={0}
+                    max={50}
+                    step={0.1}
+                    onChange={(v) => updateDafOv('W', v)}
+                  />
+                </>
+              )}
+
+              {dafParams.shape === 'Vuông' && (
+                <NumberField
+                  id="daf-ov-a"
+                  label="Cạnh bể chọn (a)"
+                  unit="m"
+                  value={activeDafOv.a}
+                  min={0}
+                  max={50}
+                  step={0.1}
+                  onChange={(v) => updateDafOv('a', v)}
+                />
+              )}
+
+              {dafParams.shape === 'Tròn' && (
+                <NumberField
+                  id="daf-ov-D"
+                  label="Đường kính chọn (D)"
+                  unit="m"
+                  value={activeDafOv.D}
+                  min={0}
+                  max={50}
+                  step={0.1}
+                  onChange={(v) => updateDafOv('D', v)}
+                />
+              )}
+
+              <NumberField
+                id="daf-ov-H"
+                label="Chiều sâu công tác chọn (H)"
+                unit="m"
+                value={activeDafOv.H}
+                min={0}
+                max={15}
+                step={0.1}
+                onChange={(v) => updateDafOv('H', v)}
               />
             </div>
 
             <StatusBanner
-              ok={isFilterVelOk && isFilterDiaOk}
-              titleOk="ĐẠT CHUẨN TỐC ĐỘ LỌC & ĐƯỜNG KÍNH BỒN"
-              titleFail="CẢNH BÁO ĐỎ: RỚT CHUẨN LỌC ÁP LỰC"
-              summaryLabel="Tốc độ lọc thực tế"
-              message={
-                isFilterVelOk && isFilterDiaOk
-                  ? `Bồn Ø ${activeFilterDia.toFixed(2)} m (F_thực = ${filterAreaActual.toFixed(2)} m²) cho tốc độ lọc thực tế ${filterVelActual.toFixed(2)} m/h ≤ ${filter.filtrationRateMax} m/h.`
-                  : `${!isFilterDiaOk ? `Đường kính chọn (${activeFilterDia.toFixed(2)} m) nhỏ hơn đường kính lý thuyết (${filterDiaTheo.toFixed(2)} m). ` : ''}${!isFilterVelOk ? `Tốc độ lọc thực tế (${filterVelActual.toFixed(2)} m/h) vượt giới hạn tối đa (${filter.filtrationRateMax} m/h).` : ''}`
-              }
-              summaryRight={`${filterVelActual.toFixed(2)} m/h`}
+              ok={isDafAllOk}
+              titleOk="ĐẠT CHUẨN HÌNH HỌC & TẢI TRỌNG TUYỂN NỔI DAF"
+              titleFail="CẢNH BÁO ĐỎ: RỚT CHUẨN THIẾT KẾ DAF"
+              summaryLabel="V_thực · Tải bề mặt"
+              message={`${
+                !isDafVolOk
+                  ? `V_thực (${dafActual.volume.toFixed(2)} m³) < V_lý thuyết (${dafVolTheo.toFixed(2)} m³). `
+                  : `V_thực = ${dafActual.volume.toFixed(2)} m³ đạt chuẩn. `
+              }${
+                !isDafLoadOk
+                  ? `Tải trọng bề mặt (${dafSurfaceLoadActual.toFixed(2)} m³/m²·h) vượt giới hạn ≤ ${dafParams.surfaceLoadMax.toFixed(1)} m³/m²·h.`
+                  : `Tải trọng bề mặt = ${dafSurfaceLoadActual.toFixed(2)} m³/m²·h đạt chuẩn.`
+              }`}
+              summaryRight={`${dafActual.volume.toFixed(2)} m³ · ${dafSurfaceLoadActual.toFixed(2)} m³/m²·h`}
             />
 
-            {/* Pump & Blower Sizing Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div className="rounded-xl bg-slate-900 border border-slate-700/80 p-4">
-                <div className="text-xs text-slate-400">
-                  Lưu lượng Bơm rửa lọc (1 bồn)
-                </div>
-                <div className="mt-1.5 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
-                  {backwashPumpM3h.toFixed(1)} m³/giờ
-                </div>
-                <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                  {backwashPumpLs.toFixed(1)} L/s ({filter.backwashWaterRate}{' '}
-                  L/s·m² × {filterAreaActual.toFixed(2)} m²)
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-900 border border-slate-700/80 p-4">
-                <div className="text-xs text-slate-400">
-                  Lưu lượng Quạt gió rửa lọc (1 bồn)
-                </div>
-                <div className="mt-1.5 font-mono text-xl font-semibold text-slate-100 tabular-nums">
-                  {backwashAirM3min.toFixed(2)} m³/phút
-                </div>
-                <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                  {backwashAirLs.toFixed(1)} L/s ({filter.backwashAirRate}{' '}
-                  L/s·m² × {filterAreaActual.toFixed(2)} m²)
-                </div>
-              </div>
-
-              <div className="rounded-xl bg-slate-900 border border-slate-700/80 p-4">
-                <div className="text-xs text-slate-400">
-                  Tổng khối lượng vật liệu lọc ({nFilterTanks} bồn)
-                </div>
-                <div className="mt-1.5 font-mono text-xl font-semibold text-slate-100 tabular-nums">
-                  {totalMediaMassAll.toLocaleString('vi-VN', {
-                    maximumFractionDigits: 0,
-                  })}{' '}
-                  kg
-                </div>
-                <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
-                  1 bồn: {totalMediaVolOne.toFixed(2)} m³ ·{' '}
-                  {totalMediaMassOne.toLocaleString('vi-VN', {
-                    maximumFractionDigits: 0,
-                  })}{' '}
-                  kg
-                </div>
-              </div>
-            </div>
-
-            {/* 3. Bảng Bóc Tách Vật Liệu Lọc (overflow-x-auto) */}
-            <div className="space-y-2.5 pt-2">
-              <div className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                <Droplets className="h-4 w-4 text-emerald-500" />
-                <span>
-                  Bảng bóc tách khối lượng vật liệu lọc thực tế (theo bồn Ø{' '}
-                  {activeFilterDia.toFixed(2)} m)
-                </span>
-              </div>
-
-              <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-                <table className="w-full min-w-[680px] text-left border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                      <th className="py-3 px-4">Lớp vật liệu lọc</th>
-                      <th className="py-3 px-4 text-right">Chiều cao (m)</th>
-                      <th className="py-3 px-4 text-right">Tỷ trọng (kg/m³)</th>
-                      <th className="py-3 px-4 text-right">Thể tích / 1 bồn</th>
-                      <th className="py-3 px-4 text-right">Khối lượng / 1 bồn</th>
-                      <th className="py-3 px-4 text-right">
-                        Tổng ({nFilterTanks} bồn)
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/60">
-                    {mediaLayers.map((layer) => (
-                      <tr key={layer.name} className="hover:bg-slate-900/40">
-                        <td className="py-3 px-4 text-slate-200">
-                          {layer.name}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                          {layer.heightM.toFixed(2)} m
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
-                          {layer.densityKgM3.toLocaleString('vi-VN')}
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                          {layer.volOneTank.toFixed(3)} m³
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
-                          {layer.massOneTank.toLocaleString('vi-VN', {
-                            maximumFractionDigits: 0,
-                          })}{' '}
-                          kg
-                        </td>
-                        <td className="py-3 px-4 text-right font-mono font-semibold tabular-nums text-slate-100">
-                          {layer.massTotal.toLocaleString('vi-VN', {
-                            maximumFractionDigits: 0,
-                          })}{' '}
-                          kg
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-slate-900/70 font-semibold">
-                      <td className="py-3 px-4 text-slate-100">
-                        Tổng cộng vật liệu lọc
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                        {totalMediaHeight.toFixed(2)} m
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-400">—</td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                        {totalMediaVolOne.toFixed(3)} m³
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
-                        {totalMediaMassOne.toLocaleString('vi-VN', {
-                          maximumFractionDigits: 0,
-                        })}{' '}
-                        kg
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
-                        {totalMediaMassAll.toLocaleString('vi-VN', {
-                          maximumFractionDigits: 0,
-                        })}{' '}
-                        kg
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
+            <CheckTable
+              title="Thông số kiểm tra ngược DAF"
+              rows={[
+                {
+                  name: 'Thể tích ngăn tuyển nổi (V)',
+                  standard: `≥ ${dafVolTheo.toFixed(2)} m³`,
+                  actual: `${dafActual.volume.toFixed(2)} m³`,
+                  ok: isDafVolOk,
+                  statusText: isDafVolOk ? 'Đạt chuẩn' : 'Thiếu thể tích',
+                },
+                {
+                  name: 'Thời gian lưu thực tế (t_thực)',
+                  standard: `≥ ${dafParams.retentionMin.toFixed(1)} phút`,
+                  actual: `${dafRetentionActual.toFixed(1)} phút`,
+                  ok: dafRetentionActual >= dafParams.retentionMin,
+                  statusText:
+                    dafRetentionActual >= dafParams.retentionMin
+                      ? 'Đạt thời gian lưu'
+                      : 'Ngắn hơn thiết kế',
+                },
+                {
+                  name: 'Tải trọng bề mặt (q₀)',
+                  standard: `≤ ${dafParams.surfaceLoadMax.toFixed(2)} m³/m²·h (LT: ${dafSurfaceLoadTheo.toFixed(2)})`,
+                  actual: `${dafSurfaceLoadActual.toFixed(2)} m³/m²·h`,
+                  ok: isDafLoadOk,
+                  statusText: isDafLoadOk ? 'Đạt tải trọng' : 'Vượt tải bề mặt',
+                },
+                {
+                  name: 'Diện tích mặt bằng (F)',
+                  standard: `${dafTheo.area.toFixed(2)} m²`,
+                  actual: `${dafActual.area.toFixed(2)} m²`,
+                  ok: dafActual.area >= dafTheo.area,
+                  statusText:
+                    dafActual.area >= dafTheo.area
+                      ? 'Đủ diện tích'
+                      : 'Nhỏ hơn LT',
+                },
+              ]}
+            />
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_physicochemical_${activeTab}`}
+        moduleLabel={PHYSICO_EQUIPMENT_LABELS[activeTab] || 'Công trình Hóa lý'}
+        storageKey={`omnieco_equipments_physicochemical_${activeTab}`}
+      />
     </div>
   );
 }

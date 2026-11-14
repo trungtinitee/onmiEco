@@ -10,10 +10,19 @@ import {
 import { useAppContext } from '../context/AppContext';
 import {
   CheckTable,
+  DecimalInput,
   NumberField,
   StatusBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const AIR_EQUIPMENT_LABELS = {
+  cyclone: 'Thiết bị Lọc bụi Xyclon',
+  baghouse: 'Hệ thống Lọc bụi Túi vải',
+  scrubber: 'Tháp Hấp thụ khí thải (Scrubber)',
+  adsorption: 'Tháp Hấp phụ Than hoạt tính',
+};
 
 const AIR_TABS = [
   { id: 'cyclone', label: 'Xyclon', icon: Wind },
@@ -229,7 +238,7 @@ export default function AirEmissionsCalc() {
           </p>
         </div>
 
-        <div className="w-full lg:w-96 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 space-y-2.5">
+        <div className="w-full lg:w-96 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 space-y-2.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="air-flow-input"
             className="flex items-center justify-between text-xs font-medium text-slate-400"
@@ -243,24 +252,17 @@ export default function AirEmissionsCalc() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="air-flow-input"
-              type="number"
-              min="0"
-              step="500"
-              value={airFlowM3h === 0 ? '' : airFlowM3h}
-              onChange={(e) =>
-                setAirFlowM3h(
-                  e.target.value === '' ? 0 : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={airFlowM3h}
+              onValueChange={setAirFlowM3h}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
               m³/giờ
             </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="print:hidden flex flex-wrap gap-1.5">
             {AIR_PRESETS.map((val) => (
               <button
                 key={val}
@@ -283,7 +285,7 @@ export default function AirEmissionsCalc() {
       <div
         role="tablist"
         aria-label="Công trình xử lý khí thải"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {AIR_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -295,14 +297,14 @@ export default function AirEmissionsCalc() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -311,7 +313,7 @@ export default function AirEmissionsCalc() {
       {/* TAB 1: XYCLON */}
       {activeTab === 'cyclone' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -409,7 +411,7 @@ export default function AirEmissionsCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -430,7 +432,7 @@ export default function AirEmissionsCalc() {
                     hCone: roundUpToStep(cycHConeTheo, 0.1),
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -536,7 +538,7 @@ export default function AirEmissionsCalc() {
       {/* TAB 2: LỌC TÚI VẢI */}
       {activeTab === 'baghouse' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -626,7 +628,7 @@ export default function AirEmissionsCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -648,7 +650,7 @@ export default function AirEmissionsCalc() {
                     H: baghouse.chamberHeightM,
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -806,7 +808,7 @@ export default function AirEmissionsCalc() {
       {/* TAB 3: THÁP HẤP THỤ SCRUBBER */}
       {activeTab === 'scrubber' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -890,7 +892,7 @@ export default function AirEmissionsCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -911,7 +913,7 @@ export default function AirEmissionsCalc() {
                     hTotal: roundUpToStep(scrubTotalHTheo, 0.1),
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -1015,7 +1017,7 @@ export default function AirEmissionsCalc() {
       {/* TAB 4: HẤP PHỤ THAN */}
       {activeTab === 'adsorption' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1114,7 +1116,7 @@ export default function AirEmissionsCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1136,7 +1138,7 @@ export default function AirEmissionsCalc() {
                     hTotal: roundUpToStep(adsTotalHTheo, 0.1),
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -1283,6 +1285,14 @@ export default function AirEmissionsCalc() {
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_airemissions_${activeTab}`}
+        moduleLabel={
+          AIR_EQUIPMENT_LABELS[activeTab] || 'Công trình Xử lý Khí thải'
+        }
+        storageKey={`omnieco_equipments_airemissions_${activeTab}`}
+      />
     </div>
   );
 }

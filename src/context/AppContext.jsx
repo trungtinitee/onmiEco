@@ -1,6 +1,14 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 
 const AppContext = createContext(null);
+const AppActionsContext = createContext(null);
 
 export const STORAGE_KEY = 'envirocalc_global_state_v1';
 
@@ -22,11 +30,20 @@ const DEFAULT_BIO_QUALITY = {
   no3DenitrifiedMgL: 28,
 };
 
+const DEFAULT_WASTEWATER_POLLUTANTS = {
+  bod5: 250,
+  cod: 500,
+  ss: 220,
+  tn: 45,
+  tp: 8,
+};
+
 function loadInitialState() {
   const fallback = {
     globalQ: 1000,
     peakingFactor: 1.5,
     bioQuality: DEFAULT_BIO_QUALITY,
+    wastewaterPollutants: DEFAULT_WASTEWATER_POLLUTANTS,
   };
   if (typeof window === 'undefined') return fallback;
   try {
@@ -36,6 +53,7 @@ function loadInitialState() {
     const q = Number(parsed?.globalQ);
     const k = Number(parsed?.peakingFactor);
     const bq = parsed?.bioQuality || {};
+    const wp = parsed?.wastewaterPollutants || {};
 
     return {
       globalQ: Number.isFinite(q) && q >= 0 ? q : fallback.globalQ,
@@ -65,6 +83,23 @@ function loadInitialState() {
           ? Number(bq.no3DenitrifiedMgL)
           : DEFAULT_BIO_QUALITY.no3DenitrifiedMgL,
       },
+      wastewaterPollutants: {
+        bod5: Number.isFinite(Number(wp.bod5))
+          ? Math.max(0, Number(wp.bod5))
+          : DEFAULT_WASTEWATER_POLLUTANTS.bod5,
+        cod: Number.isFinite(Number(wp.cod))
+          ? Math.max(0, Number(wp.cod))
+          : DEFAULT_WASTEWATER_POLLUTANTS.cod,
+        ss: Number.isFinite(Number(wp.ss))
+          ? Math.max(0, Number(wp.ss))
+          : DEFAULT_WASTEWATER_POLLUTANTS.ss,
+        tn: Number.isFinite(Number(wp.tn))
+          ? Math.max(0, Number(wp.tn))
+          : DEFAULT_WASTEWATER_POLLUTANTS.tn,
+        tp: Number.isFinite(Number(wp.tp))
+          ? Math.max(0, Number(wp.tp))
+          : DEFAULT_WASTEWATER_POLLUTANTS.tp,
+      },
     };
   } catch {
     return fallback;
@@ -78,6 +113,9 @@ export function AppProvider({ children }) {
     initial.peakingFactor
   );
   const [bioQuality, setBioQuality] = useState(initial.bioQuality);
+  const [wastewaterPollutants, setWastewaterPollutants] = useState(
+    initial.wastewaterPollutants
+  );
   const [bioFocusSignal, setBioFocusSignal] = useState(0);
 
   // Tự động lưu Global State vào localStorage mỗi khi thay đổi
@@ -87,51 +125,54 @@ export function AppProvider({ children }) {
         globalQ,
         peakingFactor,
         bioQuality,
+        wastewaterPollutants,
         updatedAt: new Date().toISOString(),
       };
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     } catch {
       // Ignore storage quota errors
     }
-  }, [globalQ, peakingFactor, bioQuality]);
+  }, [globalQ, peakingFactor, bioQuality, wastewaterPollutants]);
 
-  const setGlobalQ = (nextValue) => {
+  const setGlobalQ = useCallback((nextValue) => {
     const parsed = Number(nextValue);
     if (Number.isNaN(parsed) || parsed < 0) {
       setGlobalQState(0);
       return;
     }
     setGlobalQState(parsed);
-  };
+  }, []);
 
-  const setPeakingFactor = (nextFactor) => {
+  const setPeakingFactor = useCallback((nextFactor) => {
     const parsed = Number(nextFactor);
     if (Number.isNaN(parsed) || parsed < 1) {
       setPeakingFactorState(1);
       return;
     }
     setPeakingFactorState(Math.min(parsed, 5));
-  };
+  }, []);
 
-  const resetDefaults = () => {
+  const resetDefaults = useCallback(() => {
     setGlobalQState(1000);
     setPeakingFactorState(1.5);
     setBioQuality(DEFAULT_BIO_QUALITY);
-  };
+    setWastewaterPollutants(DEFAULT_WASTEWATER_POLLUTANTS);
+  }, []);
 
-  const triggerBiologyFocus = () => {
+  const triggerBiologyFocus = useCallback(() => {
     setBioFocusSignal((n) => n + 1);
-  };
+  }, []);
 
-  const exportProjectJson = () => {
+  const exportProjectJson = useCallback(() => {
     const payload = {
-      app: 'EnviroCalc',
+      app: 'OmniEco',
       version: '1.0',
       exportedAt: new Date().toISOString(),
       state: {
         globalQ,
         peakingFactor,
         bioQuality,
+        wastewaterPollutants,
       },
     };
     const jsonString = JSON.stringify(payload, null, 2);
@@ -140,77 +181,103 @@ export function AppProvider({ children }) {
     const link = document.createElement('a');
     const dateStamp = new Date().toISOString().slice(0, 10);
     link.href = url;
-    link.download = `envirocalc-thiet-ke-${dateStamp}.json`;
+    link.download = `omnieco-thiet-ke-${dateStamp}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  };
+  }, [globalQ, peakingFactor, bioQuality, wastewaterPollutants]);
 
-  const importProjectJson = (rawText) => {
-    try {
-      const parsed = JSON.parse(rawText);
-      const source = parsed?.state ? parsed.state : parsed;
-      if (
-        !source ||
-        typeof source !== 'object' ||
-        typeof source.globalQ === 'undefined'
-      ) {
+  const importProjectJson = useCallback(
+    (rawText) => {
+      try {
+        const parsed = JSON.parse(rawText);
+        const source = parsed?.state ? parsed.state : parsed;
+        if (
+          !source ||
+          typeof source !== 'object' ||
+          typeof source.globalQ === 'undefined'
+        ) {
+          return {
+            ok: false,
+            message:
+              'File JSON không đúng định dạng thiết kế OmniEco (thiếu globalQ).',
+          };
+        }
+        const nextQ = Number(source.globalQ);
+        if (!Number.isFinite(nextQ) || nextQ < 0) {
+          return {
+            ok: false,
+            message: 'Giá trị globalQ trong file JSON không hợp lệ.',
+          };
+        }
+        setGlobalQ(nextQ);
+
+        if (typeof source.peakingFactor !== 'undefined') {
+          setPeakingFactor(source.peakingFactor);
+        }
+        if (source.bioQuality && typeof source.bioQuality === 'object') {
+          const bq = source.bioQuality;
+          setBioQuality((prev) => ({
+            tempC: Number.isFinite(Number(bq.tempC))
+              ? Number(bq.tempC)
+              : prev.tempC,
+            bodIn: Number.isFinite(Number(bq.bodIn))
+              ? Number(bq.bodIn)
+              : prev.bodIn,
+            bodOut: Number.isFinite(Number(bq.bodOut))
+              ? Number(bq.bodOut)
+              : prev.bodOut,
+            nh4In: Number.isFinite(Number(bq.nh4In))
+              ? Number(bq.nh4In)
+              : prev.nh4In,
+            nh4Out: Number.isFinite(Number(bq.nh4Out))
+              ? Number(bq.nh4Out)
+              : prev.nh4Out,
+            hasAnoxic:
+              typeof bq.hasAnoxic === 'boolean' ? bq.hasAnoxic : prev.hasAnoxic,
+            no3DenitrifiedMgL: Number.isFinite(Number(bq.no3DenitrifiedMgL))
+              ? Number(bq.no3DenitrifiedMgL)
+              : prev.no3DenitrifiedMgL,
+          }));
+        }
+        if (
+          source.wastewaterPollutants &&
+          typeof source.wastewaterPollutants === 'object'
+        ) {
+          const wp = source.wastewaterPollutants;
+          setWastewaterPollutants((prev) => ({
+            bod5: Number.isFinite(Number(wp.bod5))
+              ? Math.max(0, Number(wp.bod5))
+              : prev.bod5,
+            cod: Number.isFinite(Number(wp.cod))
+              ? Math.max(0, Number(wp.cod))
+              : prev.cod,
+            ss: Number.isFinite(Number(wp.ss))
+              ? Math.max(0, Number(wp.ss))
+              : prev.ss,
+            tn: Number.isFinite(Number(wp.tn))
+              ? Math.max(0, Number(wp.tn))
+              : prev.tn,
+            tp: Number.isFinite(Number(wp.tp))
+              ? Math.max(0, Number(wp.tp))
+              : prev.tp,
+          }));
+        }
+
+        return {
+          ok: true,
+          message: `Đã nhập thành công hồ sơ JSON (Q = ${nextQ.toLocaleString('vi-VN')} m³/ngày).`,
+        };
+      } catch {
         return {
           ok: false,
-          message:
-            'File JSON không đúng định dạng thiết kế EnviroCalc (thiếu globalQ).',
+          message: 'Không thể đọc file JSON. Vui lòng kiểm tra cú pháp file.',
         };
       }
-      const nextQ = Number(source.globalQ);
-      if (!Number.isFinite(nextQ) || nextQ < 0) {
-        return {
-          ok: false,
-          message: 'Giá trị globalQ trong file JSON không hợp lệ.',
-        };
-      }
-      setGlobalQ(nextQ);
-
-      if (typeof source.peakingFactor !== 'undefined') {
-        setPeakingFactor(source.peakingFactor);
-      }
-      if (source.bioQuality && typeof source.bioQuality === 'object') {
-        const bq = source.bioQuality;
-        setBioQuality((prev) => ({
-          tempC: Number.isFinite(Number(bq.tempC))
-            ? Number(bq.tempC)
-            : prev.tempC,
-          bodIn: Number.isFinite(Number(bq.bodIn))
-            ? Number(bq.bodIn)
-            : prev.bodIn,
-          bodOut: Number.isFinite(Number(bq.bodOut))
-            ? Number(bq.bodOut)
-            : prev.bodOut,
-          nh4In: Number.isFinite(Number(bq.nh4In))
-            ? Number(bq.nh4In)
-            : prev.nh4In,
-          nh4Out: Number.isFinite(Number(bq.nh4Out))
-            ? Number(bq.nh4Out)
-            : prev.nh4Out,
-          hasAnoxic:
-            typeof bq.hasAnoxic === 'boolean' ? bq.hasAnoxic : prev.hasAnoxic,
-          no3DenitrifiedMgL: Number.isFinite(Number(bq.no3DenitrifiedMgL))
-            ? Number(bq.no3DenitrifiedMgL)
-            : prev.no3DenitrifiedMgL,
-        }));
-      }
-
-      return {
-        ok: true,
-        message: `Đã nhập thành công hồ sơ JSON (Q = ${nextQ.toLocaleString('vi-VN')} m³/ngày).`,
-      };
-    } catch {
-      return {
-        ok: false,
-        message: 'Không thể đọc file JSON. Vui lòng kiểm tra cú pháp file.',
-      };
-    }
-  };
+    },
+    [setGlobalQ, setPeakingFactor]
+  );
 
   const hydraulics = useMemo(() => {
     const qDay = Math.max(0, Number(globalQ) || 0);
@@ -264,6 +331,25 @@ export function AppProvider({ children }) {
     };
   }, [hydraulics.qDay, bioQuality]);
 
+  const stableActions = useMemo(
+    () => ({
+      setGlobalQ,
+      setPeakingFactor,
+      setBioQuality,
+      setWastewaterPollutants,
+      triggerBiologyFocus,
+      resetDefaults,
+      importProjectJson,
+    }),
+    [
+      setGlobalQ,
+      setPeakingFactor,
+      triggerBiologyFocus,
+      resetDefaults,
+      importProjectJson,
+    ]
+  );
+
   const value = useMemo(
     () => ({
       globalQ,
@@ -273,6 +359,8 @@ export function AppProvider({ children }) {
       hydraulics,
       bioQuality,
       setBioQuality,
+      wastewaterPollutants,
+      setWastewaterPollutants,
       biologyNod,
       bioFocusSignal,
       triggerBiologyFocus,
@@ -282,15 +370,26 @@ export function AppProvider({ children }) {
     }),
     [
       globalQ,
+      setGlobalQ,
       peakingFactor,
+      setPeakingFactor,
       hydraulics,
       bioQuality,
+      wastewaterPollutants,
       biologyNod,
       bioFocusSignal,
+      triggerBiologyFocus,
+      resetDefaults,
+      exportProjectJson,
+      importProjectJson,
     ]
   );
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return (
+    <AppActionsContext.Provider value={stableActions}>
+      <AppContext.Provider value={value}>{children}</AppContext.Provider>
+    </AppActionsContext.Provider>
+  );
 }
 
 export function useAppContext() {
@@ -299,4 +398,12 @@ export function useAppContext() {
     throw new Error('useAppContext must be used within an AppProvider');
   }
   return context;
+}
+
+export function useAppActions() {
+  const actions = useContext(AppActionsContext);
+  if (!actions) {
+    throw new Error('useAppActions must be used within an AppProvider');
+  }
+  return actions;
 }

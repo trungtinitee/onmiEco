@@ -7,7 +7,19 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
-import { NumberField, StatusBanner } from '../components/CalcPrimitives';
+import {
+  NumberField,
+  StatusBanner,
+  ViewModeToggle,
+} from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const OPS_EQUIPMENT_LABELS = {
+  nutrient: 'Hệ thống Châm Dinh dưỡng (N, P)',
+  carbon: 'Hệ thống Châm Carbon (Mật rỉ/Methanol)',
+  alkalinity: 'Hệ thống Châm Kiềm (NaHCO₃)',
+  mbr_clean: 'Hệ thống Rửa màng MBR (MC/RC)',
+};
 
 const OPS_TABS = [
   { id: 'nutrient', label: 'Dinh dưỡng (100:5:1)', icon: FlaskConical },
@@ -19,6 +31,7 @@ const OPS_TABS = [
 export default function OperationsCalc() {
   const { hydraulics, bioQuality } = useAppContext();
   const [activeTab, setActiveTab] = useState('nutrient');
+  const [mbrViewMode, setMbrViewMode] = useState('table');
 
   // --- TAB 1: DINH DƯỠNG (BOD:N:P = 100:5:1) ---
   const [nutrient, setNutrient] = useState({
@@ -193,7 +206,7 @@ export default function OperationsCalc() {
           </p>
         </div>
 
-        <div className="rounded-xl bg-slate-800 border border-slate-700/80 px-4 py-3 shrink-0">
+        <div className="rounded-xl bg-slate-800 border border-slate-700/80 px-4 py-3 shrink-0 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <div className="text-xs text-slate-400">
             Lưu lượng trạm (globalQ)
           </div>
@@ -210,7 +223,7 @@ export default function OperationsCalc() {
       <div
         role="tablist"
         aria-label="Hạng mục vận hành hóa chất"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {OPS_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -222,14 +235,14 @@ export default function OperationsCalc() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -238,7 +251,7 @@ export default function OperationsCalc() {
       {/* TAB 1: DINH DƯỠNG (BOD:N:P = 100:5:1) */}
       {activeTab === 'nutrient' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -377,7 +390,7 @@ export default function OperationsCalc() {
       {/* TAB 2: CARBON BÙ KHỬ NITƠ */}
       {activeTab === 'carbon' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -495,7 +508,7 @@ export default function OperationsCalc() {
       {/* TAB 3: KIỀM NaHCO3 BÙ NITRAT HÓA */}
       {activeTab === 'alkalinity' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -647,7 +660,7 @@ export default function OperationsCalc() {
       {/* TAB 4: RỬA MÀNG MBR (MC & RC) */}
       {activeTab === 'mbr_clean' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -779,163 +792,319 @@ export default function OperationsCalc() {
           </section>
 
           {/* Bảng pha chế Lít xuất xưởng cho công nhân vận hành */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-4 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <ClipboardList className="h-5 w-5 text-emerald-500" />
-                <h2 className="text-lg font-semibold text-slate-100">
-                  2. Bảng Pha Chế Dung Dịch Rửa Màng MBR (Theo Lít thực tế)
-                </h2>
+                <ClipboardList className="h-5 w-5 text-emerald-500 shrink-0" />
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-100">
+                    2. Bảng Pha Chế Dung Dịch Rửa Màng MBR (Theo Lít thực tế)
+                  </h2>
+                  <span className="text-xs text-slate-400 font-mono">
+                    Diện tích màng = {areaM2.toLocaleString('vi-VN')} m² · Javen{' '}
+                    {mbr.javenPct}% (ρ = {mbr.javenDensity})
+                  </span>
+                </div>
               </div>
-              <span className="text-xs text-slate-400 font-mono">
-                Diện tích màng = {areaM2.toLocaleString('vi-VN')} m² · Javen{' '}
-                {mbr.javenPct}% (ρ = {mbr.javenDensity})
-              </span>
+              <ViewModeToggle
+                viewMode={mbrViewMode}
+                setViewMode={setMbrViewMode}
+              />
             </div>
 
-            <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-              <table className="w-full min-w-[720px] text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                    <th className="py-3 px-4">Quy trình rửa màng</th>
-                    <th className="py-3 px-4">Hóa chất sử dụng</th>
-                    <th className="py-3 px-4 text-right">Nồng độ (ppm)</th>
-                    <th className="py-3 px-4 text-right">Tổng dung dịch</th>
-                    <th className="py-3 px-4 text-right">
-                      Đong Hóa chất gốc
-                    </th>
-                    <th className="py-3 px-4 text-right">Nước sạch cấp vào</th>
-                    <th className="py-3 px-4 text-right">Thời gian ngâm</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700/60">
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 font-medium text-slate-100">
-                      1. Rửa bảo trì (MC — hàng tuần)
-                    </td>
-                    <td className="py-3 px-4 text-slate-300">
-                      Javen NaOCl {mbr.javenPct}%
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-mono tabular-nums ${
-                        isMcPpmOk ? 'text-emerald-500' : 'text-red-500'
-                      }`}
-                    >
-                      {mbr.mcJavenPpm} ppm
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {mcTotalVolL.toFixed(0)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
-                      {mcJavenLiters.toFixed(2)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {mcCleanWaterLiters.toFixed(1)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right text-xs text-slate-400">
-                      30 – 45 phút
-                    </td>
-                  </tr>
+            {mbrViewMode === 'table' ? (
+              <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80 print:overflow-visible print:border-gray-300 print:break-inside-avoid">
+                <table className="w-full min-w-[720px] text-left border-collapse text-sm print:min-w-0 print:w-full print:text-gray-900">
+                  <thead>
+                    <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
+                      <th className="py-3 px-4">Quy trình rửa màng</th>
+                      <th className="py-3 px-4">Hóa chất sử dụng</th>
+                      <th className="py-3 px-4 text-right">Nồng độ (ppm)</th>
+                      <th className="py-3 px-4 text-right">Tổng dung dịch</th>
+                      <th className="py-3 px-4 text-right">
+                        Đong Hóa chất gốc
+                      </th>
+                      <th className="py-3 px-4 text-right">Nước sạch cấp vào</th>
+                      <th className="py-3 px-4 text-right">Thời gian ngâm</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/60">
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 font-medium text-slate-100">
+                        1. Rửa bảo trì (MC — hàng tuần)
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        Javen NaOCl {mbr.javenPct}%
+                      </td>
+                      <td
+                        className={`py-3 px-4 text-right font-mono tabular-nums ${
+                          isMcPpmOk ? 'text-emerald-500' : 'text-red-500'
+                        }`}
+                      >
+                        {mbr.mcJavenPpm} ppm
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {mcTotalVolL.toFixed(0)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
+                        {mcJavenLiters.toFixed(2)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {mcCleanWaterLiters.toFixed(1)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right text-xs text-slate-400">
+                        30 – 45 phút
+                      </td>
+                    </tr>
 
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 font-medium text-slate-100">
-                      2. Rửa phục hồi (RC Bước 1 — Hữu cơ)
-                    </td>
-                    <td className="py-3 px-4 text-slate-300">
-                      Javen NaOCl {mbr.javenPct}%
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-mono tabular-nums ${
-                        isRcJavenOk ? 'text-emerald-500' : 'text-red-500'
-                      }`}
-                    >
-                      {mbr.rcJavenPpm} ppm
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {rcTotalVolL.toFixed(0)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
-                      {rcJavenLiters.toFixed(2)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {rcCleanWaterJavenL.toFixed(1)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right text-xs text-slate-400">
-                      2 – 4 giờ
-                    </td>
-                  </tr>
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 font-medium text-slate-100">
+                        2. Rửa phục hồi (RC Bước 1 — Hữu cơ)
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        Javen NaOCl {mbr.javenPct}%
+                      </td>
+                      <td
+                        className={`py-3 px-4 text-right font-mono tabular-nums ${
+                          isRcJavenOk ? 'text-emerald-500' : 'text-red-500'
+                        }`}
+                      >
+                        {mbr.rcJavenPpm} ppm
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {rcTotalVolL.toFixed(0)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
+                        {rcJavenLiters.toFixed(2)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {rcCleanWaterJavenL.toFixed(1)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right text-xs text-slate-400">
+                        2 – 4 giờ
+                      </td>
+                    </tr>
 
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 font-medium text-slate-100">
-                      3. Rửa phục hồi (RC Bước 2 — Vô cơ)
-                    </td>
-                    <td className="py-3 px-4 text-slate-300">
-                      {mbr.acidType} (bột 99%)
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-mono tabular-nums ${
-                        isRcAcidOk ? 'text-emerald-500' : 'text-red-500'
-                      }`}
-                    >
-                      {mbr.rcAcidPpm} ppm
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {rcTotalVolL.toFixed(0)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
-                      {rcAcidKg.toFixed(2)} kg
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
-                      {rcTotalVolL.toFixed(1)} Lít
-                    </td>
-                    <td className="py-3 px-4 text-right text-xs text-slate-400">
-                      2 – 4 giờ (Xả sạch Javen trước)
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 font-medium text-slate-100">
+                        3. Rửa phục hồi (RC Bước 2 — Vô cơ)
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        {mbr.acidType} (bột 99%)
+                      </td>
+                      <td
+                        className={`py-3 px-4 text-right font-mono tabular-nums ${
+                          isRcAcidOk ? 'text-emerald-500' : 'text-red-500'
+                        }`}
+                      >
+                        {mbr.rcAcidPpm} ppm
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {rcTotalVolL.toFixed(0)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-bold tabular-nums text-emerald-400">
+                        {rcAcidKg.toFixed(2)} kg
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-200">
+                        {rcTotalVolL.toFixed(1)} Lít
+                      </td>
+                      <td className="py-3 px-4 text-right text-xs text-slate-400">
+                        2 – 4 giờ (Xả sạch Javen trước)
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                  {
+                    title: '1. Rửa bảo trì (MC — hàng tuần)',
+                    chemical: `Javen NaOCl ${mbr.javenPct}%`,
+                    ppm: `${mbr.mcJavenPpm} ppm`,
+                    ppmOk: isMcPpmOk,
+                    totalVol: `${mcTotalVolL.toFixed(0)} Lít`,
+                    dose: `${mcJavenLiters.toFixed(2)} Lít`,
+                    water: `${mcCleanWaterLiters.toFixed(1)} Lít`,
+                    soak: '30 – 45 phút',
+                  },
+                  {
+                    title: '2. Rửa phục hồi (RC Bước 1 — Hữu cơ)',
+                    chemical: `Javen NaOCl ${mbr.javenPct}%`,
+                    ppm: `${mbr.rcJavenPpm} ppm`,
+                    ppmOk: isRcJavenOk,
+                    totalVol: `${rcTotalVolL.toFixed(0)} Lít`,
+                    dose: `${rcJavenLiters.toFixed(2)} Lít`,
+                    water: `${rcCleanWaterJavenL.toFixed(1)} Lít`,
+                    soak: '2 – 4 giờ',
+                  },
+                  {
+                    title: '3. Rửa phục hồi (RC Bước 2 — Vô cơ)',
+                    chemical: `${mbr.acidType} (bột 99%)`,
+                    ppm: `${mbr.rcAcidPpm} ppm`,
+                    ppmOk: isRcAcidOk,
+                    totalVol: `${rcTotalVolL.toFixed(0)} Lít`,
+                    dose: `${rcAcidKg.toFixed(2)} kg`,
+                    water: `${rcTotalVolL.toFixed(1)} Lít`,
+                    soak: '2 – 4 giờ (Xả sạch Javen trước)',
+                  },
+                ].map((step) => (
+                  <div
+                    key={step.title}
+                    className="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm space-y-2.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid"
+                  >
+                    <div className="pb-2 border-b border-slate-700/70">
+                      <h3 className="text-sm font-semibold text-slate-100">
+                        {step.title}
+                      </h3>
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Hóa chất</span>
+                        <span className="text-slate-100 font-medium text-right">
+                          {step.chemical}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Nồng độ</span>
+                        <span
+                          className={`font-mono font-semibold tabular-nums ${
+                            step.ppmOk ? 'text-emerald-400' : 'text-red-400'
+                          }`}
+                        >
+                          {step.ppm}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Tổng dung dịch</span>
+                        <span className="text-slate-100 font-medium font-mono tabular-nums">
+                          {step.totalVol}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Đong Hóa chất gốc</span>
+                        <span className="font-mono font-bold tabular-nums text-emerald-400">
+                          {step.dose}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Nước sạch cấp vào</span>
+                        <span className="text-slate-100 font-medium font-mono tabular-nums">
+                          {step.water}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-700/60">
+                        <span className="text-slate-400">Thời gian ngâm</span>
+                        <span className="text-slate-100 font-medium text-right">
+                          {step.soak}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_operations_${activeTab}`}
+        moduleLabel={
+          OPS_EQUIPMENT_LABELS[activeTab] || 'Hệ thống Châm hóa chất Vận hành'
+        }
+        storageKey={`omnieco_equipments_operations_${activeTab}`}
+      />
     </div>
   );
 }
 
 function SummaryTable({ headers, rows }) {
+  const [viewMode, setViewMode] = useState('table');
+
   return (
-    <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-      <table className="w-full min-w-[640px] text-left border-collapse text-sm">
-        <thead>
-          <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-            {headers.map((h) => (
-              <th key={h} className="py-3 px-4">
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-700/60">
-          {rows.map((cells, idx) => (
-            <tr key={idx} className="hover:bg-slate-900/40">
-              {cells.map((cell, cIdx) => (
-                <td
-                  key={cIdx}
-                  className={`py-3 px-4 ${
-                    cIdx === 0
-                      ? 'font-medium text-slate-100'
-                      : cIdx === 2
-                      ? 'font-mono font-semibold text-emerald-400 tabular-nums'
-                      : 'text-slate-300 font-mono text-xs tabular-nums'
-                  }`}
-                >
-                  {cell}
-                </td>
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-slate-400">
+          Bảng tổng hợp định mức pha chế
+        </span>
+        <ViewModeToggle viewMode={viewMode} setViewMode={setViewMode} />
+      </div>
+
+      {viewMode === 'table' ? (
+        <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80 print:overflow-visible print:border-gray-300 print:break-inside-avoid">
+          <table className="w-full min-w-[640px] text-left border-collapse text-sm print:min-w-0 print:w-full print:text-gray-900">
+            <thead>
+              <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
+                {headers.map((h) => (
+                  <th key={h} className="py-3 px-4">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-700/60">
+              {rows.map((cells, idx) => (
+                <tr key={idx} className="hover:bg-slate-900/40">
+                  {cells.map((cell, cIdx) => (
+                    <td
+                      key={cIdx}
+                      className={`py-3 px-4 ${
+                        cIdx === 0
+                          ? 'font-medium text-slate-100'
+                          : cIdx === 2
+                          ? 'font-mono font-semibold text-emerald-400 tabular-nums'
+                          : 'text-slate-300 font-mono text-xs tabular-nums'
+                      }`}
+                    >
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
               ))}
-            </tr>
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {rows.map((cells, idx) => (
+            <div
+              key={idx}
+              className="bg-slate-800 p-4 rounded-lg border border-slate-700 shadow-sm space-y-2.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid"
+            >
+              <div className="pb-2 border-b border-slate-700/70">
+                <h4 className="text-sm font-semibold text-slate-100 leading-snug">
+                  {cells[0]}
+                </h4>
+              </div>
+              <div className="space-y-1.5 text-xs">
+                {cells.slice(1).map((cell, offset) => {
+                  const cIdx = offset + 1;
+                  return (
+                    <div
+                      key={headers[cIdx] ?? cIdx}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <span className="text-slate-400 shrink-0">
+                        {headers[cIdx]}
+                      </span>
+                      <span
+                        className={`text-right font-mono tabular-nums ${
+                          cIdx === 2
+                            ? 'font-semibold text-emerald-400'
+                            : 'font-medium text-slate-100'
+                        }`}
+                      >
+                        {cell}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
     </div>
   );
 }

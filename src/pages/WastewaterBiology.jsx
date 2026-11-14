@@ -4,6 +4,7 @@ import {
   Clock,
   Cpu,
   Droplets,
+  Filter,
   Flame,
   Layers,
   RotateCcw,
@@ -11,10 +12,14 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import {
+  CheckTable as ReverseCheckTable,
+  DecimalInput,
   NumberField as NumberInput,
   StatusBanner,
+  ViewModeToggle,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
 
 const BIO_TABS = [
   { id: 'uasb', label: 'UASB', icon: Flame },
@@ -23,7 +28,77 @@ const BIO_TABS = [
   { id: 'sbr', label: 'SBR', icon: Clock },
   { id: 'mbbr', label: 'MBBR', icon: Cpu },
   { id: 'mbr', label: 'MBR', icon: Droplets },
+  { id: 'clarifier', label: 'Lắng 2', icon: Filter },
 ];
+
+const BIO_EQUIPMENT_MAP = {
+  uasb: {
+    label: 'Bể Kỵ khí UASB',
+    storageKey: 'omnieco_equipments_wastewaterbiology_uasb',
+  },
+  anoxic: {
+    label: 'Bể Thiếu khí Anoxic',
+    storageKey: 'omnieco_equipments_wastewaterbiology_anoxic',
+  },
+  aerotank: {
+    label: 'Bể Sinh học Hiếu khí (Aerotank)',
+    storageKey: 'omnieco_equipments_aerotank',
+  },
+  sbr: {
+    label: 'Bể SBR (Theo mẻ)',
+    storageKey: 'omnieco_equipments_wastewaterbiology_sbr',
+  },
+  mbbr: {
+    label: 'Bể MBBR (Giá thể di động)',
+    storageKey: 'omnieco_equipments_wastewaterbiology_mbbr',
+  },
+  mbr: {
+    label: 'Bể Màng sinh học MBR',
+    storageKey: 'omnieco_equipments_wastewaterbiology_mbr',
+  },
+  clarifier: {
+    label: 'Bể Lắng đợt 2 (Lắng sinh học)',
+    storageKey: 'omnieco_equipments_wastewaterbiology_clarifier',
+  },
+};
+
+const CLARIFIER_SHAPES = [
+  { value: 'Tròn', label: 'Tròn (Ø D × H)' },
+  { value: 'Vuông', label: 'Vuông (a × a × H)' },
+];
+
+function interpolateClarifierTank(area, depth, shape) {
+  const safeA = Math.max(0, Number(area) || 0);
+  const safeH = Math.max(0.5, Number(depth) || 1);
+  if (shape === 'Vuông') {
+    const a = Math.sqrt(safeA);
+    return { area: safeA, H: safeH, a, D: 0, volume: safeA * safeH };
+  }
+  const D = Math.sqrt((4 * safeA) / Math.PI);
+  return { area: safeA, H: safeH, D, a: 0, volume: safeA * safeH };
+}
+
+function buildRecommendedClarifier(theo, shape) {
+  const H = roundUpToStep(theo.H, 0.1);
+  if (shape === 'Vuông') {
+    return { a: roundUpToStep(theo.a, 0.1), D: 0, H };
+  }
+  return { D: roundUpToStep(theo.D, 0.1), a: 0, H };
+}
+
+function computeActualClarifier(override, shape) {
+  const H = Math.max(0, Number(override.H) || 0);
+  if (shape === 'Vuông') {
+    const a = Math.max(0, Number(override.a) || 0);
+    const area = a * a;
+    const weirLength = 4 * a;
+    return { area, volume: area * H, weirLength, a, D: 0, H };
+  }
+  const D = Math.max(0, Number(override.D) || 0);
+  const area = (Math.PI * D * D) / 4;
+  const weirLength = Math.PI * D;
+  return { area, volume: area * H, weirLength, D, a: 0, H };
+}
 
 const SHAPE_OPTIONS = [
   { value: 'Chữ nhật', label: 'Chữ nhật (L × W × H)' },
@@ -165,6 +240,7 @@ export default function WastewaterBiology() {
     bioFocusSignal,
   } = useAppContext();
   const [activeTab, setActiveTab] = useState('aerotank');
+  const [o2ViewMode, setO2ViewMode] = useState('table');
 
   useEffect(() => {
     if (bioFocusSignal > 0) {
@@ -241,6 +317,20 @@ export default function WastewaterBiology() {
     ratioLW: 2.0,
     shape: 'Chữ nhật',
   });
+
+  // --- Tab 7: Bể lắng 2 (Lắng sinh học + Tuần hoàn bùn RAS) ---
+  const [clarifier, setClarifier] = useState({
+    numTanks: 1,
+    shape: 'Tròn',
+    surfaceLoadTarget: 1.0, // m3/m2.h (max chuẩn 1.5)
+    surfaceLoadMax: 1.5,
+    weirLoadMax: 250, // m3/m.ngày
+    hrtMin: 2.0, // giờ
+    depthH: 3.5, // m
+    weirRings: 1,
+    returnSludgeSsMgL: 8000, // mg/L (nồng độ bùn đáy tuần hoàn X_r)
+  });
+  const [clarifierOverride, setClarifierOverride] = useState(null);
 
   // Per-tab construction override state
   const [overrides, setOverrides] = useState({
@@ -560,10 +650,71 @@ export default function WastewaterBiology() {
     };
   };
 
-  const model = getReactorModel(activeTab);
+  const model = getReactorModel(
+    activeTab === 'clarifier' ? 'aerotank' : activeTab
+  );
   const activeOverride =
-    overrides[activeTab] ?? buildRecommendedOverride(model.theo, model.shape);
+    overrides[activeTab === 'clarifier' ? 'aerotank' : activeTab] ??
+    buildRecommendedOverride(model.theo, model.shape);
   const actual = computeActualGeometry(activeOverride, model.shape);
+
+  // --- Computed Values: Lắng 2 & Tuần hoàn bùn (RAS) ---
+  const nClarifiers = Math.max(1, Number(clarifier.numTanks) || 1);
+  const qMaxPerClarifierH = hydraulics.qMaxHour / nClarifiers;
+  const qMaxPerClarifierDay = qMaxPerClarifierH * 24;
+  const clarAreaFromLoad =
+    clarifier.surfaceLoadTarget > 0
+      ? qMaxPerClarifierH / clarifier.surfaceLoadTarget
+      : 0;
+  const clarVolFromHrt = qMaxPerClarifierH * clarifier.hrtMin;
+  const clarAreaFromHrt =
+    clarifier.depthH > 0 ? clarVolFromHrt / clarifier.depthH : 0;
+  const clarAreaTheo = Math.max(clarAreaFromLoad, clarAreaFromHrt);
+  const clarTheo = interpolateClarifierTank(
+    clarAreaTheo,
+    clarifier.depthH,
+    clarifier.shape
+  );
+  const activeClarOverride =
+    clarifierOverride ?? buildRecommendedClarifier(clarTheo, clarifier.shape);
+  const clarActual = computeActualClarifier(
+    activeClarOverride,
+    clarifier.shape
+  );
+  const clarWeirLen = clarActual.weirLength * Math.max(1, clarifier.weirRings);
+  const clarSurfaceLoadActual =
+    clarActual.area > 0 ? qMaxPerClarifierH / clarActual.area : 0;
+  const clarHrtActual =
+    qMaxPerClarifierH > 0 ? clarActual.volume / qMaxPerClarifierH : 0;
+  const clarWeirLoadActual =
+    clarWeirLen > 0 ? qMaxPerClarifierDay / clarWeirLen : 0;
+
+  // Tuần hoàn bùn (RAS): R = MLSS / (Xr - MLSS), Q_RAS = R * Q_tb
+  const sharedMlss = Math.max(100, Number(aerotank.mlss) || 3000);
+  const returnSs = Number(clarifier.returnSludgeSsMgL) || 0;
+  const isRasValid = returnSs > sharedMlss;
+  const rasRatio = isRasValid ? sharedMlss / (returnSs - sharedMlss) : 0;
+  const qRasDay = rasRatio * hydraulics.qDay;
+  const qRasHour = rasRatio * hydraulics.qHour;
+
+  const isClarSlrOk =
+    hydraulics.qDay > 0 && clarSurfaceLoadActual <= clarifier.surfaceLoadMax;
+  const isClarHrtOk =
+    hydraulics.qDay > 0 && clarHrtActual >= clarifier.hrtMin;
+  const isClarWeirOk =
+    hydraulics.qDay > 0 && clarWeirLoadActual <= clarifier.weirLoadMax;
+  const isClarAllOk =
+    isClarSlrOk && isClarHrtOk && isClarWeirOk && isRasValid;
+
+  const handleClarifierShapeChange = (nextShape) => {
+    setClarifier((p) => ({ ...p, shape: nextShape }));
+    const nextTheo = interpolateClarifierTank(
+      clarAreaTheo,
+      clarifier.depthH,
+      nextShape
+    );
+    setClarifierOverride(buildRecommendedClarifier(nextTheo, nextShape));
+  };
 
   // Actual hydraulic & SRT reverse checks
   const totalActualVolume = actual.volume * model.unitCount;
@@ -636,15 +787,15 @@ export default function WastewaterBiology() {
       <section className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div className="space-y-1.5">
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 text-balance">
-            Cụm Xử Lý Sinh Học (6 Công Nghệ)
+            Sinh Học &amp; Lắng Đợt 2 (Xử Lý Bậc 2)
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl">
-            Thiết kế động học bùn hoạt tính, điều kiện Nitrat hóa theo nhiệt độ,
-            nhu cầu cấp oxy và kiểm tra ngược kích thước hình học.
+            Thiết kế động học bùn hoạt tính, Nitrat hóa, nhu cầu oxy, bể lắng
+            thứ cấp và tính toán tuần hoàn bùn (RAS) đồng bộ thông số MLSS.
           </p>
         </div>
 
-        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5">
+        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="bio-global-q"
             className="flex items-center justify-between text-xs font-medium text-slate-400 mb-1.5"
@@ -655,19 +806,10 @@ export default function WastewaterBiology() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="bio-global-q"
-              type="number"
-              min="0"
-              step="10"
-              value={globalQ === 0 ? '' : globalQ}
-              onChange={(e) =>
-                setGlobalQ(
-                  e.target.value === ''
-                    ? 0
-                    : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={globalQ}
+              onValueChange={setGlobalQ}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
@@ -677,11 +819,11 @@ export default function WastewaterBiology() {
         </div>
       </section>
 
-      {/* 6 Technology Tabs */}
+      {/* 7 Technology Tabs */}
       <div
         role="tablist"
         aria-label="Các công nghệ xử lý sinh học"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {BIO_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -693,14 +835,14 @@ export default function WastewaterBiology() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -708,7 +850,7 @@ export default function WastewaterBiology() {
 
       {/* SECTION A: MANDATORY AEROBIC NITRIFICATION & OXYGEN DEMAND */}
       {isAerobicTab && (
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
             <div className="flex items-center gap-2">
               <Activity className="h-4 w-4 text-emerald-500 shrink-0" />
@@ -839,77 +981,168 @@ export default function WastewaterBiology() {
           />
 
           {/* Total Oxygen Demand Breakdown Table (wrapped in overflow-x-auto) */}
-          <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-            <table className="w-full min-w-[600px] text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                  <th className="py-3 px-4">Thành phần nhu cầu Oxy</th>
-                  <th className="py-3 px-4 text-right">Khối lượng chất</th>
-                  <th className="py-3 px-4 text-right">Hệ số quy đổi</th>
-                  <th className="py-3 px-4 text-right">Oxy (kg O₂/ngày)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/60">
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    (+) Oxy khử chất hữu cơ (BOD₅)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {kinetics.bodRemovedKg.toFixed(1)} kg BOD₅/ng
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
-                    BODu − 1,42·Px
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                    +{kinetics.o2BodKg.toFixed(1)}
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    (+) Oxy Nitrat hóa Amoni (N-NH₄⁺)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {kinetics.nh4RemovedKg.toFixed(1)} kg N/ng
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
-                    4,57 kg O₂/kg N
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                    +{kinetics.o2Nh4Kg.toFixed(1)}
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    (−) Oxy hoàn lại từ Anoxic (khử NO₃⁻)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {kinetics.no3DenitrifiedKg.toFixed(1)} kg N/ng
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
-                    {bioQuality.hasAnoxic ? '−2,86 kg O₂/kg N' : 'Không áp dụng'}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
-                    −{kinetics.o2CreditKg.toFixed(1)}
-                  </td>
-                </tr>
-                <tr className="bg-slate-900/60 font-semibold">
-                  <td className="py-3 px-4 text-slate-100" colSpan={3}>
-                    Tổng nhu cầu Oxy lý thuyết (O₂ tổng)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
-                    {kinetics.o2TotalKg.toFixed(1)} kg/ng ({kinetics.o2TotalHourKg.toFixed(2)}{' '}
-                    kg/h)
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-slate-400">
+                Bảng phân tích nhu cầu Oxy lý thuyết
+              </span>
+              <ViewModeToggle
+                viewMode={o2ViewMode}
+                setViewMode={setO2ViewMode}
+              />
+            </div>
+
+            {o2ViewMode === 'table' ? (
+              <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80 print:overflow-visible print:border-gray-300 print:break-inside-avoid">
+                <table className="w-full min-w-[600px] text-left border-collapse text-sm print:min-w-0 print:w-full print:text-gray-900">
+                  <thead>
+                    <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
+                      <th className="py-3 px-4">Thành phần nhu cầu Oxy</th>
+                      <th className="py-3 px-4 text-right">Khối lượng chất</th>
+                      <th className="py-3 px-4 text-right">Hệ số quy đổi</th>
+                      <th className="py-3 px-4 text-right">
+                        Oxy (kg O₂/ngày)
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/60">
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 text-slate-200">
+                        (+) Oxy khử chất hữu cơ (BOD₅)
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
+                        {kinetics.bodRemovedKg.toFixed(1)} kg BOD₅/ng
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
+                        BODu − 1,42·Px
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
+                        +{kinetics.o2BodKg.toFixed(1)}
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 text-slate-200">
+                        (+) Oxy Nitrat hóa Amoni (N-NH₄⁺)
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
+                        {kinetics.nh4RemovedKg.toFixed(1)} kg N/ng
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
+                        4,57 kg O₂/kg N
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
+                        +{kinetics.o2Nh4Kg.toFixed(1)}
+                      </td>
+                    </tr>
+                    <tr className="hover:bg-slate-900/40">
+                      <td className="py-3 px-4 text-slate-200">
+                        (−) Oxy hoàn lại từ Anoxic (khử NO₃⁻)
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
+                        {kinetics.no3DenitrifiedKg.toFixed(1)} kg N/ng
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-400">
+                        {bioQuality.hasAnoxic
+                          ? '−2,86 kg O₂/kg N'
+                          : 'Không áp dụng'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
+                        −{kinetics.o2CreditKg.toFixed(1)}
+                      </td>
+                    </tr>
+                    <tr className="bg-slate-900/60 font-semibold">
+                      <td className="py-3 px-4 text-slate-100" colSpan={3}>
+                        Tổng nhu cầu Oxy lý thuyết (O₂ tổng)
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono tabular-nums text-emerald-400">
+                        {kinetics.o2TotalKg.toFixed(1)} kg/ng (
+                        {kinetics.o2TotalHourKg.toFixed(2)} kg/h)
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[
+                  {
+                    title: '(+) Oxy khử chất hữu cơ (BOD₅)',
+                    mass: `${kinetics.bodRemovedKg.toFixed(1)} kg BOD₅/ng`,
+                    factor: 'BODu − 1,42·Px',
+                    o2: `+${kinetics.o2BodKg.toFixed(1)} kg O₂/ng`,
+                    accent: 'text-slate-100',
+                  },
+                  {
+                    title: '(+) Oxy Nitrat hóa Amoni (N-NH₄⁺)',
+                    mass: `${kinetics.nh4RemovedKg.toFixed(1)} kg N/ng`,
+                    factor: '4,57 kg O₂/kg N',
+                    o2: `+${kinetics.o2Nh4Kg.toFixed(1)} kg O₂/ng`,
+                    accent: 'text-slate-100',
+                  },
+                  {
+                    title: '(−) Oxy hoàn lại từ Anoxic (khử NO₃⁻)',
+                    mass: `${kinetics.no3DenitrifiedKg.toFixed(1)} kg N/ng`,
+                    factor: bioQuality.hasAnoxic
+                      ? '−2,86 kg O₂/kg N'
+                      : 'Không áp dụng',
+                    o2: `−${kinetics.o2CreditKg.toFixed(1)} kg O₂/ng`,
+                    accent: 'text-emerald-400',
+                  },
+                  {
+                    title: 'Tổng nhu cầu Oxy lý thuyết (O₂ tổng)',
+                    mass: 'Cân bằng toàn trạm',
+                    factor: `${kinetics.o2TotalHourKg.toFixed(2)} kg/h`,
+                    o2: `${kinetics.o2TotalKg.toFixed(1)} kg/ng`,
+                    accent: 'text-emerald-400',
+                    highlight: true,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.title}
+                    className={`bg-slate-800 p-4 rounded-lg border shadow-sm space-y-2.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid ${
+                      item.highlight
+                        ? 'border-emerald-500/40'
+                        : 'border-slate-700'
+                    }`}
+                  >
+                    <div className="pb-2 border-b border-slate-700/70">
+                      <h4 className="text-sm font-semibold text-slate-100 leading-snug">
+                        {item.title}
+                      </h4>
+                    </div>
+                    <div className="space-y-1.5 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Khối lượng chất</span>
+                        <span className="text-slate-100 font-medium font-mono tabular-nums">
+                          {item.mass}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-slate-400">Hệ số quy đổi</span>
+                        <span className="text-slate-100 font-medium font-mono tabular-nums">
+                          {item.factor}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-3 pt-1 border-t border-slate-700/60">
+                        <span className="text-slate-400">Nhu cầu Oxy</span>
+                        <span
+                          className={`font-mono font-semibold tabular-nums ${item.accent}`}
+                        >
+                          {item.o2}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </section>
       )}
 
       {/* SECTION B: SBR PHASE ALLOCATOR (Rule 3) */}
       {activeTab === 'sbr' && (
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
             <div>
               <h2 className="text-lg font-semibold text-slate-100">
@@ -1051,8 +1284,358 @@ export default function WastewaterBiology() {
         </section>
       )}
 
+      {/* SECTION C..E: REACTOR OR LẮNG 2 */}
+      {activeTab === 'clarifier' ? (
+        <div className="space-y-6">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  1. Thông số Bể lắng đợt 2 &amp; Tuần hoàn bùn hoạt tính (RAS)
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Tính theo Qmax,h = {hydraulics.qMaxHour.toFixed(2)} m³/h (chia{' '}
+                  {nClarifiers} bể) · Đồng bộ MLSS ={' '}
+                  {sharedMlss.toLocaleString('vi-VN')} mg/L từ Aerotank
+                </p>
+              </div>
+              <span className="font-mono text-xs text-emerald-400 tabular-nums">
+                F_lt = {clarTheo.area.toFixed(2)} m²/bể · R ={' '}
+                {(rasRatio * 100).toFixed(1)}%
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div>
+                <label
+                  htmlFor="clar-shape"
+                  className="block text-sm font-medium text-slate-200 mb-2"
+                >
+                  Hình dạng bể lắng 2
+                </label>
+                <select
+                  id="clar-shape"
+                  value={clarifier.shape}
+                  onChange={(e) => handleClarifierShapeChange(e.target.value)}
+                  className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 py-2 text-sm font-medium text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                >
+                  {CLARIFIER_SHAPES.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <NumberInput
+                id="clar-num"
+                label="Số đơn nguyên bể lắng"
+                unit="bể"
+                value={clarifier.numTanks}
+                min={1}
+                max={8}
+                step={1}
+                onChange={(v) =>
+                  setClarifier((p) => ({
+                    ...p,
+                    numTanks: Math.max(1, Math.round(v)),
+                  }))
+                }
+              />
+
+              <NumberInput
+                id="clar-mlss-sync"
+                label="MLSS bể Sinh học (đồng bộ)"
+                unit="mg/L"
+                value={aerotank.mlss}
+                min={1500}
+                max={6000}
+                step={100}
+                onChange={(v) => setAerotank((p) => ({ ...p, mlss: v }))}
+              />
+
+              <NumberInput
+                id="clar-xr"
+                label="Nồng độ bùn tuần hoàn đáy (X_r)"
+                unit="mg/L"
+                value={clarifier.returnSludgeSsMgL}
+                min={3000}
+                max={15000}
+                step={500}
+                onChange={(v) =>
+                  setClarifier((p) => ({ ...p, returnSludgeSsMgL: v }))
+                }
+              />
+
+              <NumberInput
+                id="clar-slr"
+                label="Tải trọng bề mặt thiết kế (q₀)"
+                unit="m³/m²·h"
+                value={clarifier.surfaceLoadTarget}
+                min={0.4}
+                max={2.0}
+                step={0.1}
+                onChange={(v) =>
+                  setClarifier((p) => ({ ...p, surfaceLoadTarget: v }))
+                }
+              />
+
+              <NumberInput
+                id="clar-slr-max"
+                label="Giới hạn tải trọng bề mặt tối đa"
+                unit="m³/m²·h"
+                value={clarifier.surfaceLoadMax}
+                min={0.5}
+                max={3.0}
+                step={0.1}
+                onChange={(v) =>
+                  setClarifier((p) => ({ ...p, surfaceLoadMax: v }))
+                }
+              />
+
+              <NumberInput
+                id="clar-weir-max"
+                label="Giới hạn tải trọng máng tràn"
+                unit="m³/m·ng"
+                value={clarifier.weirLoadMax}
+                min={80}
+                max={500}
+                step={10}
+                onChange={(v) =>
+                  setClarifier((p) => ({ ...p, weirLoadMax: v }))
+                }
+              />
+
+              <NumberInput
+                id="clar-hrt-min"
+                label="Thời gian lưu tối thiểu (HRT_min)"
+                unit="giờ"
+                value={clarifier.hrtMin}
+                min={1.0}
+                max={6.0}
+                step={0.5}
+                onChange={(v) => setClarifier((p) => ({ ...p, hrtMin: v }))}
+              />
+
+              <NumberInput
+                id="clar-depth"
+                label="Chiều sâu vùng lắng lý thuyết (H)"
+                unit="m"
+                value={clarifier.depthH}
+                min={2.0}
+                max={6.0}
+                step={0.1}
+                onChange={(v) => setClarifier((p) => ({ ...p, depthH: v }))}
+              />
+
+              <NumberInput
+                id="clar-weir-rings"
+                label="Số chu vi máng tràn thu nước"
+                unit="vòng"
+                value={clarifier.weirRings}
+                min={1}
+                max={2}
+                step={1}
+                onChange={(v) =>
+                  setClarifier((p) => ({
+                    ...p,
+                    weirRings: Math.max(1, Math.round(v)),
+                  }))
+                }
+              />
+            </div>
+
+            <div className="pt-3 border-t border-slate-700/70 text-xs font-mono text-slate-400">
+              R = MLSS / (X_r − MLSS) = {sharedMlss} / ({returnSs} −{' '}
+              {sharedMlss}) = {rasRatio.toFixed(3)} → Q_RAS ={' '}
+              {qRasHour.toFixed(2)} m³/h ({qRasDay.toFixed(1)} m³/ngày)
+            </div>
+          </section>
+
+          {/* Theoretical Clarifier & RAS KPIs */}
+          <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Kích thước nội suy lý thuyết ({clarifier.shape})
+              </div>
+              <div className="mt-2 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
+                {clarifier.shape === 'Tròn'
+                  ? `Ø ${clarTheo.D.toFixed(2)} × ${clarTheo.H.toFixed(2)} m`
+                  : `${clarTheo.a.toFixed(2)} × ${clarTheo.a.toFixed(2)} × ${clarTheo.H.toFixed(2)} m`}
+              </div>
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                F_lt = {clarTheo.area.toFixed(2)} m² · V_lt ={' '}
+                {clarTheo.volume.toFixed(2)} m³
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Lưu lượng bùn tuần hoàn (Q_RAS)
+              </div>
+              <div
+                className={`mt-2 font-mono text-xl font-semibold tabular-nums ${
+                  isRasValid ? 'text-emerald-400' : 'text-red-400'
+                }`}
+              >
+                {qRasHour.toFixed(2)} m³/giờ
+              </div>
+              <div className="mt-1 text-xs font-mono text-slate-400 tabular-nums">
+                {qRasDay.toFixed(1)} m³/ngày (Tỷ số R = {(rasRatio * 100).toFixed(1)}
+                % Q_tb)
+              </div>
+            </div>
+
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
+              <div className="text-xs text-slate-400">
+                Tải trọng bề mặt &amp; Máng tràn thực tế
+              </div>
+              <div
+                className={`mt-2 font-mono text-xl font-semibold tabular-nums ${
+                  isClarSlrOk && isClarWeirOk
+                    ? 'text-slate-100'
+                    : 'text-red-400'
+                }`}
+              >
+                {clarSurfaceLoadActual.toFixed(2)} m³/m²·h
+              </div>
+              <div className="mt-1 text-xs text-slate-400 font-mono tabular-nums">
+                Máng tràn: {clarWeirLoadActual.toFixed(1)} /{' '}
+                {clarifier.weirLoadMax} m³/m·ng
+              </div>
+            </div>
+          </section>
+
+          {/* Override & Reverse Check */}
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  2. Chốt kích thước thi công &amp; Kiểm tra ngược Bể lắng 2
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Nhập kích thước chẵn ({clarifier.shape}) để kiểm tra ngược tải
+                  trọng bề mặt, máng tràn, HRT và cân bằng bùn RAS.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setClarifierOverride(
+                    buildRecommendedClarifier(clarTheo, clarifier.shape)
+                  )
+                }
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
+                <span>Làm tròn theo lý thuyết</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {clarifier.shape === 'Tròn' ? (
+                <NumberInput
+                  id="clar-ov-D"
+                  label="Đường kính bể chọn (D)"
+                  unit="m"
+                  value={activeClarOverride.D}
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  onChange={(v) =>
+                    setClarifierOverride({ ...activeClarOverride, D: v })
+                  }
+                />
+              ) : (
+                <NumberInput
+                  id="clar-ov-a"
+                  label="Cạnh bể vuông chọn (a)"
+                  unit="m"
+                  value={activeClarOverride.a}
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  onChange={(v) =>
+                    setClarifierOverride({ ...activeClarOverride, a: v })
+                  }
+                />
+              )}
+
+              <NumberInput
+                id="clar-ov-H"
+                label="Chiều sâu vùng lắng chọn (H)"
+                unit="m"
+                value={activeClarOverride.H}
+                min={0}
+                max={15}
+                step={0.1}
+                onChange={(v) =>
+                  setClarifierOverride({ ...activeClarOverride, H: v })
+                }
+              />
+            </div>
+
+            <StatusBanner
+              ok={isClarAllOk}
+              titleOk="ĐẠT CHUẨN BỂ LẮNG ĐỢT 2 & TUẦN HOÀN BÙN"
+              titleFail="CẢNH BÁO ĐỎ: VƯỢT NGƯỠNG THIẾT KẾ BỂ LẮNG 2"
+              summaryLabel="Q_RAS · HRT thực"
+              message={
+                isClarAllOk
+                  ? `Tải bề mặt (${clarSurfaceLoadActual.toFixed(2)} m³/m²·h), máng tràn (${clarWeirLoadActual.toFixed(1)} m³/m·ng), HRT (${clarHrtActual.toFixed(2)}h) và bơm tuần hoàn RAS (${qRasHour.toFixed(1)} m³/h) đạt chuẩn.`
+                  : `${!isRasValid ? `Nồng độ bùn tuần hoàn X_r (${returnSs} mg/L) phải lớn hơn MLSS (${sharedMlss} mg/L). ` : ''}${!isClarSlrOk ? `Vượt tải bề mặt (${clarSurfaceLoadActual.toFixed(2)} > ${clarifier.surfaceLoadMax} m³/m²·h). ` : ''}${!isClarWeirOk ? `Vượt tải máng tràn (${clarWeirLoadActual.toFixed(1)} > ${clarifier.weirLoadMax} m³/m·ng). ` : ''}${!isClarHrtOk ? `Thiếu thời gian lưu (${clarHrtActual.toFixed(2)} < ${clarifier.hrtMin} giờ).` : ''}`
+              }
+              summaryRight={`${qRasHour.toFixed(1)} m³/h · ${clarHrtActual.toFixed(2)} h`}
+            />
+
+            <ReverseCheckTable
+              rows={[
+                {
+                  name: 'Tải trọng bề mặt tại Qmax (q₀)',
+                  standard: `≤ ${clarifier.surfaceLoadMax.toFixed(2)} m³/m²·h`,
+                  actual: `${clarSurfaceLoadActual.toFixed(2)} m³/m²·h`,
+                  ok: isClarSlrOk,
+                  statusText: isClarSlrOk ? 'Đạt chuẩn' : 'Vượt tải trọng',
+                },
+                {
+                  name: 'Tải trọng máng tràn (q_weir)',
+                  standard: `≤ ${clarifier.weirLoadMax.toFixed(0)} m³/m·ngày`,
+                  actual: `${clarWeirLoadActual.toFixed(1)} m³/m·ngày`,
+                  ok: isClarWeirOk,
+                  statusText: isClarWeirOk ? 'Đạt chuẩn' : 'Vượt tải máng tràn',
+                },
+                {
+                  name: 'Thời gian lưu thủy lực (HRT)',
+                  standard: `≥ ${clarifier.hrtMin.toFixed(2)} giờ`,
+                  actual: `${clarHrtActual.toFixed(2)} giờ`,
+                  ok: isClarHrtOk,
+                  statusText: isClarHrtOk ? 'Đạt chuẩn' : 'Thiếu thời gian lưu',
+                },
+                {
+                  name: 'Thể tích vùng lắng thực tế (1 bể)',
+                  standard: `≥ ${clarTheo.volume.toFixed(1)} m³`,
+                  actual: `${clarActual.volume.toFixed(1)} m³`,
+                  ok: clarActual.volume >= clarTheo.volume,
+                  statusText:
+                    clarActual.volume >= clarTheo.volume
+                      ? 'Đủ thể tích'
+                      : 'Nhỏ hơn lý thuyết',
+                },
+                {
+                  name: 'Cân bằng bùn tuần hoàn (X_r > MLSS)',
+                  standard: `X_r > ${sharedMlss.toLocaleString('vi-VN')} mg/L`,
+                  actual: `R = ${(rasRatio * 100).toFixed(1)}% (${qRasHour.toFixed(2)} m³/h)`,
+                  ok: isRasValid,
+                  statusText: isRasValid ? 'Đạt cân bằng' : 'Sai nồng độ bùn',
+                },
+              ]}
+            />
+          </section>
+        </div>
+      ) : (
+        <>
       {/* SECTION C: REACTOR SPECIFIC PARAMETERS & SHAPE SELECTOR */}
-      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
         <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
           <div>
             <h2 className="text-lg font-semibold text-slate-100">
@@ -1346,7 +1929,7 @@ export default function WastewaterBiology() {
 
       {/* SECTION D: THEORETICAL INTERPOLATED DIMENSIONS + EXTRA METRICS */}
       <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+        <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <div className="text-xs text-slate-400">
             Kích thước nội suy lý thuyết ({model.shape})
           </div>
@@ -1376,7 +1959,7 @@ export default function WastewaterBiology() {
         {extraCards.map((card) => (
           <div
             key={card.label}
-            className="rounded-xl bg-slate-800 border border-slate-700/80 p-5"
+            className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid"
           >
             <div className="text-xs text-slate-400">{card.label}</div>
             <div
@@ -1398,7 +1981,7 @@ export default function WastewaterBiology() {
       </section>
 
       {/* SECTION E: CONSTRUCTION OVERRIDE & REVERSE VERIFICATION */}
-      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
           <div>
             <h2 className="text-lg font-semibold text-slate-100">
@@ -1414,7 +1997,7 @@ export default function WastewaterBiology() {
           <button
             type="button"
             onClick={handleSnapRecommended}
-            className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
             <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
             <span>Làm tròn theo lý thuyết</span>
@@ -1530,111 +2113,66 @@ export default function WastewaterBiology() {
           summaryRight={`${actual.volume.toFixed(2)} m³ · ${hrtActualHours.toFixed(2)} h`}
         />
 
-        {/* Reverse Verification Table wrapped in overflow-x-auto */}
-        <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-          <table className="w-full min-w-[620px] text-left border-collapse text-sm">
-            <thead>
-              <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                <th className="py-3 px-4">Thông số kiểm tra ngược</th>
-                <th className="py-3 px-4 text-right">Lý thuyết / Yêu cầu</th>
-                <th className="py-3 px-4 text-right">Thực tế thi công</th>
-                <th className="py-3 px-4 text-right">Đánh giá</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-700/60">
-              <tr className="hover:bg-slate-900/40">
-                <td className="py-3 px-4 text-slate-200">
-                  Thể tích 1 đơn nguyên (V)
-                </td>
-                <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                  {model.vTheo.toFixed(2)} m³
-                </td>
-                <td
-                  className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                    isVolumeOk ? 'text-emerald-500' : 'text-red-500'
-                  }`}
-                >
-                  {actual.volume.toFixed(2)} m³
-                </td>
-                <td
-                  className={`py-3 px-4 text-right font-medium ${
-                    isVolumeOk ? 'text-emerald-500' : 'text-red-500'
-                  }`}
-                >
-                  {isVolumeOk ? 'Đạt chuẩn' : 'Thiếu thể tích'}
-                </td>
-              </tr>
-
-              <tr className="hover:bg-slate-900/40">
-                <td className="py-3 px-4 text-slate-200">
-                  Thời gian lưu thủy lực (HRT)
-                </td>
-                <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                  {hrtTheoHours.toFixed(2)} giờ
-                </td>
-                <td
-                  className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                    hrtActualHours >= hrtTheoHours
-                      ? 'text-emerald-500'
-                      : 'text-red-500'
-                  }`}
-                >
-                  {hrtActualHours.toFixed(2)} giờ
-                </td>
-                <td
-                  className={`py-3 px-4 text-right font-medium ${
-                    hrtActualHours >= hrtTheoHours
-                      ? 'text-emerald-500'
-                      : 'text-red-500'
-                  }`}
-                >
-                  {hrtActualHours >= hrtTheoHours ? 'Đạt' : 'Nhỏ hơn LT'}
-                </td>
-              </tr>
-
-              {srtActualDays !== null && (
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    Tuổi bùn (SRT thực tế vs SRT_min)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    ≥ {kinetics.srtMin.toFixed(2)} ngày
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                      isSrtActualOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {srtActualDays.toFixed(2)} ngày
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-medium ${
-                      isSrtActualOk ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {isSrtActualOk ? 'Nitrat hóa ổn định' : 'Rửa trôi Nitrat'}
-                  </td>
-                </tr>
-              )}
-
-              <tr className="hover:bg-slate-900/40">
-                <td className="py-3 px-4 text-slate-200">
-                  Diện tích mặt bằng (F)
-                </td>
-                <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                  {model.theo.area.toFixed(2)} m²
-                </td>
-                <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                  {actual.area.toFixed(2)} m²
-                </td>
-                <td className="py-3 px-4 text-right text-slate-400">
-                  {model.unitCount > 1 ? `× ${model.unitCount} bể` : '1 đơn nguyên'}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <ReverseCheckTable
+          title="Bảng kiểm tra ngược thông số bể sinh học"
+          rows={[
+            {
+              name: 'Thể tích 1 đơn nguyên (V)',
+              standard: `${model.vTheo.toFixed(2)} m³`,
+              actual: `${actual.volume.toFixed(2)} m³`,
+              ok: isVolumeOk,
+              statusText: isVolumeOk ? 'Đạt chuẩn' : 'Thiếu thể tích',
+            },
+            {
+              name: 'Thời gian lưu thủy lực (HRT)',
+              standard: `${hrtTheoHours.toFixed(2)} giờ`,
+              actual: `${hrtActualHours.toFixed(2)} giờ`,
+              ok: hrtActualHours >= hrtTheoHours,
+              statusText:
+                hrtActualHours >= hrtTheoHours ? 'Đạt' : 'Nhỏ hơn LT',
+            },
+            ...(srtActualDays !== null
+              ? [
+                  {
+                    name: 'Tuổi bùn (SRT thực tế vs SRT_min)',
+                    standard: `≥ ${kinetics.srtMin.toFixed(2)} ngày`,
+                    actual: `${srtActualDays.toFixed(2)} ngày`,
+                    ok: isSrtActualOk,
+                    statusText: isSrtActualOk
+                      ? 'Nitrat hóa ổn định'
+                      : 'Rửa trôi Nitrat',
+                  },
+                ]
+              : []),
+            {
+              name: 'Diện tích mặt bằng (F)',
+              standard: `${model.theo.area.toFixed(2)} m²`,
+              actual: `${actual.area.toFixed(2)} m²`,
+              ok: actual.area >= model.theo.area,
+              statusText:
+                model.unitCount > 1
+                  ? `× ${model.unitCount} bể`
+                  : '1 đơn nguyên',
+            },
+          ]}
+        />
       </section>
+        </>
+      )}
+
+      <EquipmentSelector
+        key={
+          BIO_EQUIPMENT_MAP[activeTab]?.storageKey ||
+          `omnieco_equipments_wastewaterbiology_${activeTab}`
+        }
+        moduleLabel={
+          BIO_EQUIPMENT_MAP[activeTab]?.label || 'Công trình Sinh học'
+        }
+        storageKey={
+          BIO_EQUIPMENT_MAP[activeTab]?.storageKey ||
+          `omnieco_equipments_wastewaterbiology_${activeTab}`
+        }
+      />
     </div>
   );
 }

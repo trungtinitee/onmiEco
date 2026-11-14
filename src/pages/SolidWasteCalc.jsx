@@ -9,10 +9,18 @@ import {
 import { useAppContext } from '../context/AppContext';
 import {
   CheckTable,
+  DecimalInput,
   NumberField,
   StatusBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const SOLID_EQUIPMENT_LABELS = {
+  landfill: 'Ô chôn lấp hợp vệ sinh',
+  compost: 'Khu Ủ phân Compost',
+  incinerator: 'Lò đốt rác Y tế / Nguy hại',
+};
 
 const SOLID_TABS = [
   { id: 'landfill', label: 'Ô chôn lấp hợp vệ sinh', icon: Layers },
@@ -317,7 +325,7 @@ export default function SolidWasteCalc() {
           </p>
         </div>
 
-        <div className="w-full lg:w-96 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 space-y-2.5">
+        <div className="w-full lg:w-96 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 space-y-2.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="waste-ton-input"
             className="flex items-center justify-between text-xs font-medium text-slate-400"
@@ -332,26 +340,17 @@ export default function SolidWasteCalc() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="waste-ton-input"
-              type="number"
-              min="0"
-              step="0.5"
-              value={wasteTonDay === 0 ? '' : wasteTonDay}
-              onChange={(e) =>
-                setWasteTonDay(
-                  e.target.value === ''
-                    ? 0
-                    : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={wasteTonDay}
+              onValueChange={setWasteTonDay}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-24 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
               tấn/ngày
             </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="print:hidden flex flex-wrap gap-1.5">
             {WASTE_PRESETS_TON.map((val) => (
               <button
                 key={val}
@@ -374,7 +373,7 @@ export default function SolidWasteCalc() {
       <div
         role="tablist"
         aria-label="Công trình xử lý chất thải rắn"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {SOLID_TABS.map((tab) => {
           const Icon = tab.icon;
@@ -386,14 +385,14 @@ export default function SolidWasteCalc() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -402,7 +401,7 @@ export default function SolidWasteCalc() {
       {/* TAB 1: Ô CHÔN LẤP */}
       {activeTab === 'landfill' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -532,7 +531,7 @@ export default function SolidWasteCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -558,7 +557,7 @@ export default function SolidWasteCalc() {
                     h: landfill.depthH,
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -719,7 +718,7 @@ export default function SolidWasteCalc() {
       {/* TAB 2: Ủ COMPOST */}
       {activeTab === 'compost' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -834,7 +833,7 @@ export default function SolidWasteCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -861,7 +860,7 @@ export default function SolidWasteCalc() {
                     h: compost.heightH,
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -1021,7 +1020,7 @@ export default function SolidWasteCalc() {
       {/* TAB 3: LÒ ĐỐT RÁC Y TẾ / NGUY HẠI */}
       {activeTab === 'incinerator' && (
         <div className="space-y-6">
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1146,7 +1145,7 @@ export default function SolidWasteCalc() {
             </div>
           </section>
 
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1497,6 +1496,14 @@ export default function SolidWasteCalc() {
           </section>
         </div>
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_solidwaste_${activeTab}`}
+        moduleLabel={
+          SOLID_EQUIPMENT_LABELS[activeTab] || 'Công trình Chất thải rắn'
+        }
+        storageKey={`omnieco_equipments_solidwaste_${activeTab}`}
+      />
     </div>
   );
 }

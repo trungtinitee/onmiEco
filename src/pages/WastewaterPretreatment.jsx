@@ -5,21 +5,29 @@ import {
   Layers,
   RotateCcw,
   Waves,
-  Wind,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 import {
+  CheckTable,
+  DecimalInput,
   NumberField as InputField,
   StatusBanner,
   roundUpToStep,
 } from '../components/CalcPrimitives';
+import EquipmentSelector from '../components/EquipmentSelector';
+
+const PRETREAT_EQUIPMENT_LABELS = {
+  screen: 'Song chắn rác',
+  grit: 'Bể Lắng cát',
+  grease: 'Bể Tách dầu mỡ',
+  equalization: 'Bể Điều hòa',
+};
 
 const TABS = [
   { id: 'screen', label: 'Song chắn rác', icon: Filter },
   { id: 'grit', label: 'Lắng cát', icon: Layers },
   { id: 'grease', label: 'Tách dầu mỡ', icon: Droplets },
   { id: 'equalization', label: 'Bể điều hòa', icon: Waves },
-  { id: 'daf', label: 'Tuyển nổi DAF', icon: Wind },
 ];
 
 const SHAPE_OPTIONS = [
@@ -145,7 +153,7 @@ export default function WastewaterPretreatment() {
     channelL: 3.0,
   });
 
-  // --- Volumetric Tabs State (grit, grease, equalization, daf) ---
+  // --- Volumetric Tabs State (grit, grease, equalization) ---
   const [gritParams, setGritParams] = useState({
     retentionSec: 60,
     depthH: 1.5,
@@ -165,21 +173,12 @@ export default function WastewaterPretreatment() {
     ratioLW: 1.5,
     shape: 'Chữ nhật',
   });
-  const [dafParams, setDafParams] = useState({
-    retentionMin: 25,
-    recyclePct: 30,
-    depthH: 2.2,
-    ssIn: 350,
-    ratioLW: 2.0,
-    shape: 'Chữ nhật',
-  });
 
   // Per-tab custom override values (null = auto-derived from theoretical rounded up)
   const [overrides, setOverrides] = useState({
     grit: null,
     grease: null,
     equalization: null,
-    daf: null,
   });
 
   // Hydraulic flows in m3/s
@@ -293,57 +292,28 @@ export default function WastewaterPretreatment() {
       };
     }
 
-    if (tabId === 'equalization') {
-      const vTheo = hydraulics.qHour * eqParams.hrtHours;
-      const theo = interpolateDimensions(
-        vTheo,
-        eqParams.depthH,
-        eqParams.shape,
-        eqParams.ratioLW
-      );
-      return {
-        tabId: 'equalization',
-        title: 'Bể điều hòa lưu lượng & nồng độ',
-        standardNote: 'Tính theo lưu lượng trung bình giờ Qtb,h · Sục khí chống lắng',
-        formulaText: `V_lt = Qtb,h × HRT = ${hydraulics.qHour.toFixed(2)} m³/h × ${eqParams.hrtHours} h = ${vTheo.toFixed(2)} m³`,
-        params: eqParams,
-        setParams: setEqParams,
-        vTheo,
-        theo,
-        extraTheoLabel: 'Khí sục chống lắng lý thuyết',
-        extraTheoValue: `${(vTheo * eqParams.airRate).toFixed(1)} m³/giờ`,
-        reverseCheckLabel: 'HRT thực tế · Khí sục thực tế',
-        getReverseCheckValue: (vActual) =>
-          `${hydraulics.qHour > 0 ? (vActual / hydraulics.qHour).toFixed(2) : '0.00'} h · ${(vActual * eqParams.airRate).toFixed(1)} m³/h`,
-      };
-    }
-
-    // daf
-    const qDafHour = hydraulics.qHour * (1 + dafParams.recyclePct / 100);
-    const vTheo = qDafHour * (dafParams.retentionMin / 60);
+    // equalization
+    const vTheo = hydraulics.qHour * eqParams.hrtHours;
     const theo = interpolateDimensions(
       vTheo,
-      dafParams.depthH,
-      dafParams.shape,
-      dafParams.ratioLW
+      eqParams.depthH,
+      eqParams.shape,
+      eqParams.ratioLW
     );
     return {
-      tabId: 'daf',
-      title: 'Bể tuyển nổi áp lực DAF',
-      standardNote: 'Tính theo tổng lưu lượng qua ngăn tuyển nổi (Q + Q_tuần hoàn)',
-      formulaText: `Q_DAF = ${hydraulics.qHour.toFixed(2)} × (1 + ${dafParams.recyclePct}%) = ${qDafHour.toFixed(2)} m³/h · V_lt = ${vTheo.toFixed(2)} m³`,
-      params: dafParams,
-      setParams: setDafParams,
+      tabId: 'equalization',
+      title: 'Bể điều hòa lưu lượng & nồng độ',
+      standardNote: 'Tính theo lưu lượng trung bình giờ Qtb,h · Sục khí chống lắng',
+      formulaText: `V_lt = Qtb,h × HRT = ${hydraulics.qHour.toFixed(2)} m³/h × ${eqParams.hrtHours} h = ${vTheo.toFixed(2)} m³`,
+      params: eqParams,
+      setParams: setEqParams,
       vTheo,
       theo,
-      extraTheoLabel: 'Tải trọng bề mặt tuyển nổi',
-      extraTheoValue:
-        theo.area > 0
-          ? `${(qDafHour / theo.area).toFixed(2)} m³/m²·h`
-          : '0 m³/m²·h',
-      reverseCheckLabel: 'Thời gian lưu thực · Tải bề mặt thực',
-      getReverseCheckValue: (vActual, areaActual) =>
-        `${qDafHour > 0 ? ((vActual / qDafHour) * 60).toFixed(1) : '0.0'} phút · ${areaActual > 0 ? (qDafHour / areaActual).toFixed(2) : '0.00'} m³/m²·h`,
+      extraTheoLabel: 'Khí sục chống lắng lý thuyết',
+      extraTheoValue: `${(vTheo * eqParams.airRate).toFixed(1)} m³/giờ`,
+      reverseCheckLabel: 'HRT thực tế · Khí sục thực tế',
+      getReverseCheckValue: (vActual) =>
+        `${hydraulics.qHour > 0 ? (vActual / hydraulics.qHour).toFixed(2) : '0.00'} h · ${(vActual * eqParams.airRate).toFixed(1)} m³/h`,
     };
   };
 
@@ -400,7 +370,7 @@ export default function WastewaterPretreatment() {
     return (
       <div className="space-y-6">
         {/* 1. Design Inputs + Shape Selector (Responsive 1-3 col Grid) */}
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
             <div>
               <h2 className="text-lg font-semibold text-slate-100">
@@ -492,33 +462,6 @@ export default function WastewaterPretreatment() {
               </>
             )}
 
-            {tabId === 'daf' && (
-              <>
-                <InputField
-                  id="daf-retention"
-                  label="Thời gian lưu ngăn tuyển nổi"
-                  unit="phút"
-                  value={dafParams.retentionMin}
-                  min={10}
-                  max={60}
-                  step={1}
-                  onChange={(v) =>
-                    setParams((p) => ({ ...p, retentionMin: v }))
-                  }
-                />
-                <InputField
-                  id="daf-recycle"
-                  label="Tỷ lệ tuần hoàn bão hòa khí (R)"
-                  unit="%"
-                  value={dafParams.recyclePct}
-                  min={10}
-                  max={100}
-                  step={5}
-                  onChange={(v) => setParams((p) => ({ ...p, recyclePct: v }))}
-                />
-              </>
-            )}
-
             {/* Common Theoretical Depth H */}
             <InputField
               id={`${tabId}-depth-theo`}
@@ -558,7 +501,7 @@ export default function WastewaterPretreatment() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Thể tích & Diện tích lý thuyết
               </div>
@@ -570,7 +513,7 @@ export default function WastewaterPretreatment() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Kích thước hình học nội suy
               </div>
@@ -608,7 +551,7 @@ export default function WastewaterPretreatment() {
               )}
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">{cfg.extraTheoLabel}</div>
               <div className="mt-2 font-mono text-xl font-semibold text-slate-100 tabular-nums">
                 {cfg.extraTheoValue}
@@ -621,7 +564,7 @@ export default function WastewaterPretreatment() {
         </section>
 
         {/* 3. Dynamic Construction Override Form + 4. Reverse Verification */}
-        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+        <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
             <div>
               <h2 className="text-lg font-semibold text-slate-100">
@@ -637,7 +580,7 @@ export default function WastewaterPretreatment() {
             <button
               type="button"
               onClick={() => handleSnapRecommended(tabId)}
-              className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+              className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
               <span>Làm tròn theo lý thuyết</span>
@@ -747,85 +690,40 @@ export default function WastewaterPretreatment() {
             summaryRight={`${actual.volume.toFixed(2)} / ${vTheo.toFixed(2)} m³`}
           />
 
-          {/* Comparison Table wrapped in overflow-x-auto */}
-          <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-            <table className="w-full min-w-[600px] text-left border-collapse text-sm">
-              <thead>
-                <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                  <th className="py-3 px-4">Hạng mục kiểm tra</th>
-                  <th className="py-3 px-4 text-right">Lý thuyết</th>
-                  <th className="py-3 px-4 text-right">Chọn thi công</th>
-                  <th className="py-3 px-4 text-right">Đánh giá</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/60">
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    Thể tích công tác (V)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {vTheo.toFixed(2)} m³
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-mono font-semibold tabular-nums ${
-                      isCompliant ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {actual.volume.toFixed(2)} m³
-                  </td>
-                  <td
-                    className={`py-3 px-4 text-right font-medium ${
-                      isCompliant ? 'text-emerald-500' : 'text-red-500'
-                    }`}
-                  >
-                    {isCompliant ? 'Đạt chuẩn' : 'Thiếu thể tích'}
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    Diện tích mặt bằng (F)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {theo.area.toFixed(2)} m²
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                    {actual.area.toFixed(2)} m²
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-400">
-                    {actual.area >= theo.area ? 'Đủ diện tích' : 'Nhỏ hơn LT'}
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    {cfg.reverseCheckLabel}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {cfg.getReverseCheckValue(vTheo, theo.area)}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                    {cfg.getReverseCheckValue(actual.volume, actual.area)}
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-400">
-                    Kiểm tra ngược
-                  </td>
-                </tr>
-                <tr className="hover:bg-slate-900/40">
-                  <td className="py-3 px-4 text-slate-200">
-                    Chiều cao xây dựng (kèm h_bv = 0,4 m)
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                    {(theo.H + 0.4).toFixed(2)} m
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                    {(actual.H + 0.4).toFixed(2)} m
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-400">
-                    Tổng chiều cao
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <CheckTable
+            title="Bảng kiểm tra kích thước & thông số công trình"
+            rows={[
+              {
+                name: 'Thể tích công tác (V)',
+                standard: `${vTheo.toFixed(2)} m³`,
+                actual: `${actual.volume.toFixed(2)} m³`,
+                ok: isCompliant,
+                statusText: isCompliant ? 'Đạt chuẩn' : 'Thiếu thể tích',
+              },
+              {
+                name: 'Diện tích mặt bằng (F)',
+                standard: `${theo.area.toFixed(2)} m²`,
+                actual: `${actual.area.toFixed(2)} m²`,
+                ok: actual.area >= theo.area,
+                statusText:
+                  actual.area >= theo.area ? 'Đủ diện tích' : 'Nhỏ hơn LT',
+              },
+              {
+                name: cfg.reverseCheckLabel,
+                standard: cfg.getReverseCheckValue(vTheo, theo.area),
+                actual: cfg.getReverseCheckValue(actual.volume, actual.area),
+                ok: isCompliant,
+                statusText: 'Kiểm tra ngược',
+              },
+              {
+                name: 'Chiều cao xây dựng (kèm h_bv = 0,4 m)',
+                standard: `${(theo.H + 0.4).toFixed(2)} m`,
+                actual: `${(actual.H + 0.4).toFixed(2)} m`,
+                ok: actual.H >= theo.H,
+                statusText: 'Tổng chiều cao',
+              },
+            ]}
+          />
         </section>
       </div>
     );
@@ -841,12 +739,12 @@ export default function WastewaterPretreatment() {
           </h1>
           <p className="text-sm text-slate-400 max-w-2xl">
             Tính toán kích thước lý thuyết, chọn hình dạng thi công và kiểm tra
-            ngược thể tích thực tế cho 5 công đoạn đầu nguồn.
+            ngược thể tích thực tế cho 4 công đoạn cơ học &amp; điều hòa đầu nguồn.
           </p>
         </div>
 
         {/* Inline globalQ input synced with AppContext */}
-        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5">
+        <div className="w-full lg:w-80 rounded-xl bg-slate-800 border border-slate-700/80 p-3.5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
           <label
             htmlFor="pretreatment-global-q"
             className="flex items-center justify-between text-xs font-medium text-slate-400 mb-1.5"
@@ -857,19 +755,10 @@ export default function WastewaterPretreatment() {
             </span>
           </label>
           <div className="relative flex items-center">
-            <input
+            <DecimalInput
               id="pretreatment-global-q"
-              type="number"
-              min="0"
-              step="10"
-              value={globalQ === 0 ? '' : globalQ}
-              onChange={(e) =>
-                setGlobalQ(
-                  e.target.value === ''
-                    ? 0
-                    : Math.max(0, Number(e.target.value) || 0)
-                )
-              }
+              value={globalQ}
+              onValueChange={setGlobalQ}
               className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3.5 pr-20 py-2 font-mono text-base font-semibold text-emerald-400 tabular-nums focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
             <span className="absolute right-3 text-xs font-mono text-slate-400 pointer-events-none">
@@ -879,11 +768,11 @@ export default function WastewaterPretreatment() {
         </div>
       </section>
 
-      {/* 5 Interactive Tabs — scrollable on narrow mobile, min-h-[44px] touch target */}
+      {/* 4 Interactive Tabs — scrollable on narrow mobile, min-h-[44px] touch target */}
       <div
         role="tablist"
         aria-label="Các công trình tiền xử lý"
-        className="flex items-center gap-2 overflow-x-auto pb-1"
+        className="print:hidden flex items-center gap-2 overflow-x-auto pb-1"
       >
         {TABS.map((tab) => {
           const Icon = tab.icon;
@@ -895,14 +784,14 @@ export default function WastewaterPretreatment() {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+              className={`inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                 isActive
                   ? 'bg-emerald-500 text-slate-950 font-semibold'
                   : 'bg-slate-800 text-slate-300 border border-slate-700/80 hover:bg-slate-700 hover:text-slate-100'
               }`}
             >
-              <Icon className="h-4 w-4 shrink-0" />
-              <span>{tab.label}</span>
+              <Icon className="h-4 w-4 shrink-0 pointer-events-none" />
+              <span className="pointer-events-none">{tab.label}</span>
             </button>
           );
         })}
@@ -912,7 +801,7 @@ export default function WastewaterPretreatment() {
       {activeTab === 'screen' ? (
         <div className="space-y-6">
           {/* Song chắn rác Inputs */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-baseline justify-between gap-2 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1011,7 +900,7 @@ export default function WastewaterPretreatment() {
 
           {/* Song chắn rác Theoretical Results */}
           <section className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Bề rộng mương lý thuyết (B_lt)
               </div>
@@ -1023,7 +912,7 @@ export default function WastewaterPretreatment() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Vận tốc qua khe thực tế (v_thực)
               </div>
@@ -1035,7 +924,7 @@ export default function WastewaterPretreatment() {
               </div>
             </div>
 
-            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5">
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 print:break-inside-avoid">
               <div className="text-xs text-slate-400">
                 Tổn thất áp lực qua song (h_r)
               </div>
@@ -1050,7 +939,7 @@ export default function WastewaterPretreatment() {
           </section>
 
           {/* Song chắn rác Override & Table */}
-          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
               <div>
                 <h2 className="text-lg font-semibold text-slate-100">
@@ -1070,7 +959,7 @@ export default function WastewaterPretreatment() {
                     channelL: roundUpToStep(screenCalc.lengthTheo, 0.5),
                   })
                 }
-                className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="print:hidden inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-200 transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-emerald-500" />
                 <span>Làm tròn theo lý thuyết</span>
@@ -1131,83 +1020,48 @@ export default function WastewaterPretreatment() {
               summaryRight={`${screenCalc.vActual.toFixed(2)} m/s`}
             />
 
-            <div className="overflow-x-auto w-full rounded-lg border border-slate-700/80">
-              <table className="w-full min-w-[600px] text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-slate-900/90 text-xs font-medium text-slate-400 border-b border-slate-700/80">
-                    <th className="py-3 px-4">Thông số mương</th>
-                    <th className="py-3 px-4 text-right">Lý thuyết</th>
-                    <th className="py-3 px-4 text-right">Chọn thi công</th>
-                    <th className="py-3 px-4 text-right">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-700/60">
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 text-slate-200">Bề rộng mương (B)</td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                      {screenCalc.widthTheo.toFixed(3)} m
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                      {screenOverride.widthB.toFixed(2)} m
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-medium ${
-                        screenCalc.isWidthOk
-                          ? 'text-emerald-500'
-                          : 'text-red-500'
-                      }`}
-                    >
-                      {screenCalc.isWidthOk ? 'Đạt' : 'Chưa đủ rộng'}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 text-slate-200">
-                      Vận tốc qua khe (v)
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                      {screenParams.vKhe.toFixed(2)} m/s
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                      {screenCalc.vActual.toFixed(2)} m/s
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-medium ${
-                        screenCalc.isVelOk ? 'text-emerald-500' : 'text-red-500'
-                      }`}
-                    >
-                      {screenCalc.isVelOk ? 'Trong ngưỡng' : 'Ngoài ngưỡng'}
-                    </td>
-                  </tr>
-                  <tr className="hover:bg-slate-900/40">
-                    <td className="py-3 px-4 text-slate-200">
-                      Tổn thất áp lực qua song (h_r)
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-300">
-                      &le; 150 mm
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums text-slate-100">
-                      {(screenCalc.headLoss * 1000).toFixed(1)} mm
-                    </td>
-                    <td
-                      className={`py-3 px-4 text-right font-medium ${
-                        screenCalc.headLoss * 1000 <= 150
-                          ? 'text-emerald-500'
-                          : 'text-amber-400'
-                      }`}
-                    >
-                      {screenCalc.headLoss * 1000 <= 150
-                        ? 'Bình thường'
-                        : 'Cần vớt rác'}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+            <CheckTable
+              title="Thông số kiểm tra ngược mương song chắn rác"
+              rows={[
+                {
+                  name: 'Bề rộng mương (B)',
+                  standard: `${screenCalc.widthTheo.toFixed(3)} m`,
+                  actual: `${screenOverride.widthB.toFixed(2)} m`,
+                  ok: screenCalc.isWidthOk,
+                  statusText: screenCalc.isWidthOk ? 'Đạt' : 'Chưa đủ rộng',
+                },
+                {
+                  name: 'Vận tốc qua khe (v)',
+                  standard: `${screenParams.vKhe.toFixed(2)} m/s`,
+                  actual: `${screenCalc.vActual.toFixed(2)} m/s`,
+                  ok: screenCalc.isVelOk,
+                  statusText: screenCalc.isVelOk
+                    ? 'Trong ngưỡng'
+                    : 'Ngoài ngưỡng',
+                },
+                {
+                  name: 'Tổn thất áp lực qua song (h_r)',
+                  standard: '≤ 150 mm',
+                  actual: `${(screenCalc.headLoss * 1000).toFixed(1)} mm`,
+                  ok: screenCalc.headLoss * 1000 <= 150,
+                  statusText:
+                    screenCalc.headLoss * 1000 <= 150
+                      ? 'Bình thường'
+                      : 'Cần vớt rác',
+                },
+              ]}
+            />
           </section>
         </div>
       ) : (
         renderVolumetricSection(activeTab)
       )}
+
+      <EquipmentSelector
+        key={`omnieco_equipments_wastewaterpretreatment_${activeTab}`}
+        moduleLabel={PRETREAT_EQUIPMENT_LABELS[activeTab] || 'Công trình Tiền xử lý'}
+        storageKey={`omnieco_equipments_wastewaterpretreatment_${activeTab}`}
+      />
     </div>
   );
 }
