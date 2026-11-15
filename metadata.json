@@ -1,0 +1,6 @@
+{
+  "name": "EnviroCalc — Thiết kế Kỹ thuật Môi trường",
+  "description": "Ứng dụng web tính toán thiết kế các công trình xử lý nước thải và kỹ thuật môi trường.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
