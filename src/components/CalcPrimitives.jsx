@@ -114,6 +114,7 @@ export function NumberField({
   value,
   disabled = false,
   onChange,
+  helperText,
 }) {
   return (
     <div>
@@ -140,6 +141,9 @@ export function NumberField({
           {unit}
         </span>
       </div>
+      {helperText && (
+        <p className="text-xs text-slate-400 mt-1 italic">{helperText}</p>
+      )}
     </div>
   );
 }

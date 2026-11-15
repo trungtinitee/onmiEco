@@ -745,6 +745,7 @@ export default function WaterSupplyBasic() {
                 max={12}
                 step={0.5}
                 onChange={(v) => setIronMn((p) => ({ ...p, airWaterRatio: v }))}
+                helperText="Gợi ý: Tỷ lệ Khí / Nước = 4 – 6"
               />
               <NumberField
                 id="im-time"
@@ -790,6 +791,7 @@ export default function WaterSupplyBasic() {
                 max={120}
                 step={5}
                 onChange={(v) => setZigzag((p) => ({ ...p, retentionSec: v }))}
+                helperText="Gợi ý: 20 – 30 giây"
               />
               <NumberField
                 id="zz-baffles"
@@ -815,6 +817,7 @@ export default function WaterSupplyBasic() {
                 max={1.4}
                 step={0.05}
                 onChange={(v) => setZigzag((p) => ({ ...p, flowVelTarget: v }))}
+                helperText="Gợi ý: 0,8 – 1,2 m/s"
               />
               <NumberField
                 id="zz-temp"
@@ -852,6 +855,7 @@ export default function WaterSupplyBasic() {
                 onChange={(v) =>
                   setLamella((p) => ({ ...p, surfaceLoadTarget: v }))
                 }
+                helperText="Gợi ý: 4,0 – 6,0 m³/m²·h"
               />
               <NumberField
                 id="lm-qmax"
@@ -876,6 +880,7 @@ export default function WaterSupplyBasic() {
                 onChange={(v) =>
                   setLamella((p) => ({ ...p, plateAngleDeg: v }))
                 }
+                helperText="Gợi ý: 60° (thường chọn 55° – 60°)"
               />
               <NumberField
                 id="lm-space"
@@ -930,6 +935,7 @@ export default function WaterSupplyBasic() {
                 onChange={(v) =>
                   setSandFilter((p) => ({ ...p, filtrationRateTarget: v }))
                 }
+                helperText="Gợi ý: 5 – 10 m/h"
               />
               <NumberField
                 id="rs-vmax"
@@ -954,6 +960,7 @@ export default function WaterSupplyBasic() {
                 onChange={(v) =>
                   setSandFilter((p) => ({ ...p, backwashWaterRate: v }))
                 }
+                helperText="Gợi ý: 12 – 15 L/s·m²"
               />
               <NumberField
                 id="rs-bw-a"

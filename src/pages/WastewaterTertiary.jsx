@@ -298,6 +298,7 @@ export default function WastewaterTertiary() {
                 onChange={(v) =>
                   setFilter((p) => ({ ...p, filtrationRateTarget: v }))
                 }
+                helperText="Gợi ý: 8 – 12 m/h (lọc áp lực)"
               />
 
               <NumberField
@@ -324,6 +325,7 @@ export default function WastewaterTertiary() {
                 onChange={(v) =>
                   setFilter((p) => ({ ...p, backwashWaterRate: v }))
                 }
+                helperText="Gợi ý: 12 – 15 L/s·m²"
               />
 
               <NumberField
@@ -774,6 +776,7 @@ export default function WastewaterTertiary() {
                     onChange={(v) =>
                       setDisinfection((p) => ({ ...p, chlorineDoseMgL: v }))
                     }
+                    helperText="Gợi ý: 3 – 10 mg/L"
                   />
                   <NumberField
                     id="dis-javen-pct"
@@ -798,6 +801,7 @@ export default function WastewaterTertiary() {
                     onChange={(v) =>
                       setDisinfection((p) => ({ ...p, contactMinutes: v }))
                     }
+                    helperText="Gợi ý: 15 – 30 phút (TCVN 7957:2008)"
                   />
                   <NumberField
                     id="dis-tank-h"
@@ -827,6 +831,7 @@ export default function WastewaterTertiary() {
                     onChange={(v) =>
                       setDisinfection((p) => ({ ...p, uvDoseMjCm2: v }))
                     }
+                    helperText="Gợi ý: 30 – 40 mJ/cm²"
                   />
                   <NumberField
                     id="dis-uv-spec"
@@ -871,6 +876,7 @@ export default function WastewaterTertiary() {
                     onChange={(v) =>
                       setDisinfection((p) => ({ ...p, ozoneDoseMgL: v }))
                     }
+                    helperText="Gợi ý: 2 – 5 mg/L"
                   />
                   <NumberField
                     id="dis-o3-kwh"

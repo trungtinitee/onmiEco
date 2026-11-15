@@ -340,6 +340,7 @@ export default function WaterSupplyAdvanced() {
                 max={30}
                 step={1}
                 onChange={(v) => setSoftener((p) => ({ ...p, velTarget: v }))}
+                helperText="Gợi ý: 10 – 25 m/h"
               />
               <NumberField
                 id="soft-vmax"
@@ -370,6 +371,7 @@ export default function WaterSupplyAdvanced() {
                 max={48}
                 step={2}
                 onChange={(v) => setSoftener((p) => ({ ...p, cycleHours: v }))}
+                helperText="Gợi ý: 8 – 24 giờ"
               />
               <NumberField
                 id="soft-depth"
@@ -550,6 +552,7 @@ export default function WaterSupplyAdvanced() {
                 max={20}
                 step={1}
                 onChange={(v) => setCarbon((p) => ({ ...p, velTarget: v }))}
+                helperText="Gợi ý: 5 – 15 m/h"
               />
               <NumberField
                 id="carb-vmax"
@@ -570,6 +573,7 @@ export default function WaterSupplyAdvanced() {
                 max={20}
                 step={1}
                 onChange={(v) => setCarbon((p) => ({ ...p, ebctMin: v }))}
+                helperText="Gợi ý: 10 – 20 phút"
               />
               <NumberField
                 id="carb-depth"
@@ -767,6 +771,7 @@ export default function WaterSupplyAdvanced() {
                 max={90}
                 step={1}
                 onChange={(v) => setRouf((p) => ({ ...p, fluxTargetLmh: v }))}
+                helperText="Gợi ý: RO 15 – 25 LMH; UF 40 – 60 LMH"
               />
 
               <NumberField
@@ -778,6 +783,7 @@ export default function WaterSupplyAdvanced() {
                 max={96}
                 step={5}
                 onChange={(v) => setRouf((p) => ({ ...p, recoveryPct: v }))}
+                helperText="Gợi ý: RO 50 – 75 % (UF 85 – 95 %)"
               />
 
               <NumberField
@@ -947,6 +953,7 @@ export default function WaterSupplyAdvanced() {
                 onChange={(v) =>
                   setMedical((p) => ({ ...p, deadLegLengthMm: v }))
                 }
+                helperText="Gợi ý: < 3D (nhỏ hơn 3 lần đường kính ống nhánh)"
               />
 
               <NumberField
@@ -958,6 +965,7 @@ export default function WaterSupplyAdvanced() {
                 max={50}
                 step={0.5}
                 onChange={(v) => setMedical((p) => ({ ...p, loopFlowM3h: v }))}
+                helperText="Gợi ý: Duy trì vận tốc vòng > 0,9 m/s chống Biofilm"
               />
 
               <div>

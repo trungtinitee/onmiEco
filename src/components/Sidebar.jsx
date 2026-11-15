@@ -346,7 +346,7 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
       <div
         onClick={onClose}
         aria-hidden="true"
-        className={`no-print print:hidden fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-xs transition-opacity duration-200 md:hidden ${
+        className={`no-print print:hidden fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-xs overscroll-none touch-none transition-opacity duration-200 md:hidden ${
           isOpen
             ? 'opacity-100 pointer-events-auto'
             : 'opacity-0 pointer-events-none'
@@ -355,7 +355,7 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
 
       <aside
         aria-label="Điều hướng module kỹ thuật"
-        className={`no-print print:hidden fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-900 border-r border-slate-800 transition-transform duration-200 ease-out md:static md:w-64 lg:w-72 md:translate-x-0 shrink-0 ${
+        className={`no-print print:hidden fixed inset-y-0 left-0 z-50 flex w-72 flex-col h-full max-h-dvh md:max-h-none bg-slate-900 border-r border-slate-800 overscroll-contain transition-transform duration-200 ease-out md:static md:w-64 lg:w-72 md:translate-x-0 shrink-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -400,7 +400,7 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
         </div>
 
         {/* Navigation: Standalone Dashboard + Accordion Groups */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+        <nav className="flex-1 h-full overflow-y-auto overscroll-contain px-3 py-3 pb-24 space-y-2">
           {/* Nút Trang chủ độc lập ở trên cùng */}
           {dashboardMatchesSearch && (
             <NavLink

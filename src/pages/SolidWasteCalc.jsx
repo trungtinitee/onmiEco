@@ -469,6 +469,7 @@ export default function SolidWasteCalc() {
                   setLandfill((p) => ({ ...p, compactedDensityKgM3: v }));
                   setLandfillOv(null);
                 }}
+                helperText="Gợi ý: 600 – 1.000 kg/m³"
               />
 
               <NumberField
@@ -483,6 +484,7 @@ export default function SolidWasteCalc() {
                   setLandfill((p) => ({ ...p, coverSoilRatioPct: v }));
                   setLandfillOv(null);
                 }}
+                helperText="Gợi ý: 15 – 20 %"
               />
 
               <NumberField
@@ -526,6 +528,7 @@ export default function SolidWasteCalc() {
                     setLandfill((p) => ({ ...p, slopeM: v }));
                     setLandfillOv(null);
                   }}
+                  helperText="Gợi ý: Hệ số mái taluy m = 2,0 – 3,0"
                 />
               )}
             </div>
@@ -787,6 +790,7 @@ export default function SolidWasteCalc() {
                   setCompost((p) => ({ ...p, retentionDays: v }));
                   setCompostOv(null);
                 }}
+                helperText="Gợi ý: 30 – 45 ngày"
               />
 
               <NumberField
@@ -801,6 +805,7 @@ export default function SolidWasteCalc() {
                   setCompost((p) => ({ ...p, densityKgM3: v }));
                   setCompostOv(null);
                 }}
+                helperText="Gợi ý: 500 – 650 kg/m³"
               />
 
               <NumberField
@@ -829,6 +834,7 @@ export default function SolidWasteCalc() {
                   setCompost((p) => ({ ...p, heightH: v }));
                   setCompostOv(null);
                 }}
+                helperText="Gợi ý: 1,2 – 2,0 m"
               />
             </div>
           </section>
@@ -1065,6 +1071,7 @@ export default function SolidWasteCalc() {
                   setIncinerator((p) => ({ ...p, secondaryTempC: v }));
                   setIncOv(null);
                 }}
+                helperText="Gợi ý: Rác y tế ≥ 1.050°C; Chất thải nguy hại ≥ 1.200°C"
               />
 
               <NumberField
@@ -1079,6 +1086,7 @@ export default function SolidWasteCalc() {
                   setIncinerator((p) => ({ ...p, flueGasNm3Kg: v }));
                   setIncOv(null);
                 }}
+                helperText="Gợi ý: 12 – 20 Nm³/kg"
               />
 
               <NumberField
@@ -1093,6 +1101,7 @@ export default function SolidWasteCalc() {
                   setIncinerator((p) => ({ ...p, primaryLoadKgM3H: v }));
                   setIncOv(null);
                 }}
+                helperText="Gợi ý: 50 – 150 kg/m³·h"
               />
 
               <div>

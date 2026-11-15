@@ -512,6 +512,7 @@ export default function MEPHydraulics() {
                   setPipe((p) => ({ ...p, targetVelMs: v }));
                   setPipeOverride(null);
                 }}
+                helperText="Gợi ý: Ống hút 0,6 – 1,2 m/s; Ống đẩy 1,5 – 2,5 m/s"
               />
 
               <div>
@@ -827,6 +828,9 @@ export default function MEPHydraulics() {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-slate-400 mt-1 italic">
+                  Gợi ý: V_hút = 0,6 – 1,2 m/s (chống xâm thực)
+                </p>
               </div>
 
               <div>
@@ -853,6 +857,9 @@ export default function MEPHydraulics() {
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-slate-400 mt-1 italic">
+                  Gợi ý: V_đẩy = 1,5 – 2,5 m/s
+                </p>
               </div>
 
               <NumberField
@@ -864,6 +871,7 @@ export default function MEPHydraulics() {
                 max={90}
                 step={2}
                 onChange={(v) => setPump((p) => ({ ...p, pumpEffPct: v }))}
+                helperText="Gợi ý: 60 – 80 %"
               />
 
               <NumberField

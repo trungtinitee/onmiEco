@@ -278,6 +278,7 @@ export default function OperationsCalc() {
                 max={5000}
                 step={20}
                 onChange={(v) => setNutrient((p) => ({ ...p, bodMgL: v }))}
+                helperText="Gợi ý: Tỷ lệ dinh dưỡng chuẩn BOD : N : P = 100 : 5 : 1"
               />
               <NumberField
                 id="nut-navail"
@@ -288,6 +289,7 @@ export default function OperationsCalc() {
                 max={500}
                 step={1}
                 onChange={(v) => setNutrient((p) => ({ ...p, nAvailMgL: v }))}
+                helperText="Gợi ý: Định mức N = 5% BOD₅ (BOD : N : P = 100 : 5 : 1)"
               />
               <NumberField
                 id="nut-pavail"
@@ -298,6 +300,7 @@ export default function OperationsCalc() {
                 max={100}
                 step={0.5}
                 onChange={(v) => setNutrient((p) => ({ ...p, pAvailMgL: v }))}
+                helperText="Gợi ý: Định mức P = 1% BOD₅ (BOD : N : P = 100 : 5 : 1)"
               />
 
               <div>
@@ -721,6 +724,7 @@ export default function OperationsCalc() {
                 max={1000}
                 step={50}
                 onChange={(v) => setMbr((p) => ({ ...p, mcJavenPpm: v }))}
+                helperText="Gợi ý: Javen MC = 300 – 500 ppm"
               />
 
               <NumberField
@@ -743,6 +747,7 @@ export default function OperationsCalc() {
                 max={5000}
                 step={100}
                 onChange={(v) => setMbr((p) => ({ ...p, rcJavenPpm: v }))}
+                helperText="Gợi ý: Javen RC = 1.000 – 3.000 ppm"
               />
 
               <div>
@@ -774,6 +779,7 @@ export default function OperationsCalc() {
                 max={4000}
                 step={100}
                 onChange={(v) => setMbr((p) => ({ ...p, rcAcidPpm: v }))}
+                helperText="Gợi ý: Axit RC = 1.000 – 2.000 ppm"
               />
             </div>
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Check,
-  Download,
   ExternalLink,
   FileSpreadsheet,
   Filter,
@@ -311,29 +310,6 @@ export default function ProcurementList() {
     [updateItems]
   );
 
-  const handleExportBomJson = useCallback(() => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      totalEquipmentLines: items.length,
-      totalUnits: totals.totalUnits,
-      totalPowerKw: Number(totals.totalPowerKw.toFixed(2)),
-      items,
-    };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `omnieco-bom-mua-sam-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  }, [items, totals]);
-
   const handleExportExcel = useCallback(() => {
     if (items.length === 0) return;
 
@@ -422,16 +398,6 @@ export default function ProcurementList() {
             >
               <Plus className="h-4 w-4 pointer-events-none shrink-0" />
               <span className="pointer-events-none">Thêm thiết bị</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExportBomJson}
-              disabled={items.length === 0}
-              className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 text-sm font-medium text-slate-200 transition-colors"
-            >
-              <Download className="h-4 w-4 text-emerald-400 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">Xuất BOM JSON</span>
             </button>
 
             <button

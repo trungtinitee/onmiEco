@@ -419,6 +419,7 @@ export default function WastewaterPretreatment() {
                 onChange={(v) =>
                   setParams((p) => ({ ...p, retentionSec: v }))
                 }
+                helperText="Gợi ý: 30 – 60 giây tại Qmax (TCVN 7957:2008)"
               />
             )}
 
@@ -434,6 +435,7 @@ export default function WastewaterPretreatment() {
                 onChange={(v) =>
                   setParams((p) => ({ ...p, retentionMin: v }))
                 }
+                helperText="Gợi ý: 15 – 30 phút (Metcalf & Eddy)"
               />
             )}
 
@@ -448,6 +450,7 @@ export default function WastewaterPretreatment() {
                   max={24}
                   step={0.5}
                   onChange={(v) => setParams((p) => ({ ...p, hrtHours: v }))}
+                  helperText="Gợi ý: 6 – 12 giờ (điều hòa lưu lượng & nồng độ)"
                 />
                 <InputField
                   id="eq-air"
@@ -458,6 +461,7 @@ export default function WastewaterPretreatment() {
                   max={3}
                   step={0.1}
                   onChange={(v) => setParams((p) => ({ ...p, airRate: v }))}
+                  helperText="Gợi ý: 0,6 – 0,9 m³/m³·h (tương đương 10 – 15 L/m³·phút)"
                 />
               </>
             )}
@@ -472,6 +476,11 @@ export default function WastewaterPretreatment() {
               max={7}
               step={0.1}
               onChange={(v) => setParams((p) => ({ ...p, depthH: v }))}
+              helperText={
+                tabId === 'grit'
+                  ? 'Gợi ý: 0,2 – 1,0 m (bể lắng cát ngang, TCVN 7957:2008)'
+                  : undefined
+              }
             />
 
             {/* Aspect Ratio L/W only when Chữ nhật */}
@@ -827,6 +836,7 @@ export default function WastewaterPretreatment() {
                 max={1.2}
                 step={0.05}
                 onChange={(v) => setScreenParams((p) => ({ ...p, vKhe: v }))}
+                helperText="Gợi ý: 0,6 – 1,0 m/s tại Qmax (TCVN 7957:2008)"
               />
               <InputField
                 id="scr-b"
@@ -837,6 +847,7 @@ export default function WastewaterPretreatment() {
                 max={50}
                 step={1}
                 onChange={(v) => setScreenParams((p) => ({ ...p, bMm: v }))}
+                helperText="Gợi ý: 10 – 25 mm (song chắn tinh / trung bình)"
               />
               <InputField
                 id="scr-s"

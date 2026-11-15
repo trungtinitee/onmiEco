@@ -386,6 +386,7 @@ export default function WastewaterSludge() {
                 max={80}
                 step={1}
                 onChange={(v) => setThickener((p) => ({ ...p, slrMax: v }))}
+                helperText="Gợi ý: 25 – 80 kg DS/m²·ngày"
               />
 
               <NumberInput
@@ -655,6 +656,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDewatering((p) => ({ ...p, operateHours: v }))
                 }
+                helperText="Gợi ý: 8 – 16 giờ/ngày"
               />
 
               <NumberInput
@@ -668,6 +670,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDewatering((p) => ({ ...p, cakeMoisturePct: v }))
                 }
+                helperText="Gợi ý: 75 – 82 %"
               />
 
               <NumberInput
@@ -681,6 +684,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDewatering((p) => ({ ...p, polymerDoseKgTon: v }))
                 }
+                helperText="Gợi ý: 2 – 5 kg/tấn DS"
               />
 
               <NumberInput
@@ -694,6 +698,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDewatering((p) => ({ ...p, polymerConcPct: v }))
                 }
+                helperText="Gợi ý: 0,1 – 0,2 %"
               />
 
               {dewatering.machineType === 'Khung bản' ? (
@@ -819,6 +824,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDryingBed((p) => ({ ...p, solidsLoadingYear: v }))
                 }
+                helperText="Gợi ý: 100 – 150 kg DS/m²·năm"
               />
 
               <NumberInput
@@ -832,6 +838,7 @@ export default function WastewaterSludge() {
                 onChange={(v) =>
                   setDryingBed((p) => ({ ...p, sludgeDepthM: v }))
                 }
+                helperText="Gợi ý: 0,2 – 0,3 m"
               />
 
               <NumberInput
@@ -843,6 +850,7 @@ export default function WastewaterSludge() {
                 max={30}
                 step={1}
                 onChange={(v) => setDryingBed((p) => ({ ...p, cycleDays: v }))}
+                helperText="Gợi ý: 15 – 30 ngày/mẻ"
               />
             </div>
 

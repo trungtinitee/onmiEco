@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, FlaskConical, Gauge } from 'lucide-react';
+import { AlertTriangle, FlaskConical, Gauge } from 'lucide-react';
 import { FLOW_PRESETS, useAppContext } from '../context/AppContext';
 import { DecimalInput, ViewModeToggle } from '../components/CalcPrimitives';
 
@@ -110,7 +109,7 @@ export default function WastewaterInput() {
       : 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-4 print:pb-0">
       {/* Page Title */}
       <section className="space-y-2">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-emerald-500">
@@ -188,6 +187,9 @@ export default function WastewaterInput() {
                 lần
               </span>
             </div>
+            <p className="text-xs text-slate-400 mt-1 italic">
+              Gợi ý: 1,5 – 3,0 tùy quy mô lưu lượng (TCVN 7957:2008)
+            </p>
           </div>
         </div>
 
@@ -463,17 +465,6 @@ export default function WastewaterInput() {
           })()}
         </div>
       </section>
-
-      {/* Navigation CTA to Step 2: Pretreatment */}
-      <div className="no-print print:hidden flex justify-end">
-        <Link
-          to="/tien-xu-ly"
-          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-semibold transition-colors whitespace-nowrap shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-        >
-          <span>Tiếp tục: Tiền xử lý (5 công đoạn)</span>
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
     </div>
   );
 }

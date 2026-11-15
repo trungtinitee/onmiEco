@@ -424,6 +424,7 @@ export default function PhysicochemicalCalc() {
                 max={180}
                 step={5}
                 onChange={(v) => setCoag((p) => ({ ...p, retentionSec: v }))}
+                helperText="Gợi ý: 30 – 120 giây (khuấy trộn nhanh)"
               />
             )}
 
@@ -437,6 +438,7 @@ export default function PhysicochemicalCalc() {
                 max={60}
                 step={1}
                 onChange={(v) => setFloc((p) => ({ ...p, retentionMin: v }))}
+                helperText="Gợi ý: 15 – 30 phút (khuấy chậm tạo bông)"
               />
             )}
 
@@ -453,6 +455,7 @@ export default function PhysicochemicalCalc() {
                   onChange={(v) =>
                     setSed((p) => ({ ...p, surfaceLoadTarget: v }))
                   }
+                  helperText="Gợi ý: 1,5 – 2,5 m³/m²·h (lắng hóa lý)"
                 />
                 <NumberField
                   id="sed-hrt"
@@ -476,6 +479,13 @@ export default function PhysicochemicalCalc() {
               max={1200}
               step={tabId === 'coagulation' ? 25 : 5}
               onChange={(v) => setParams((p) => ({ ...p, gTarget: v }))}
+              helperText={
+                tabId === 'coagulation'
+                  ? 'Gợi ý: 300 – 1.000 s⁻¹ (TCVN 7957 / Metcalf & Eddy)'
+                  : tabId === 'flocculation'
+                  ? 'Gợi ý: 20 – 70 s⁻¹ (tránh vỡ bông cặn)'
+                  : 'Gợi ý: 5 – 25 s⁻¹ (vùng tâm bể lắng)'
+              }
             />
 
             <NumberField
@@ -859,6 +869,7 @@ export default function PhysicochemicalCalc() {
                 onChange={(v) =>
                   setDafParams((p) => ({ ...p, retentionMin: v }))
                 }
+                helperText="Gợi ý: 10 – 30 phút"
               />
 
               <NumberField
@@ -883,6 +894,7 @@ export default function PhysicochemicalCalc() {
                 onChange={(v) =>
                   setDafParams((p) => ({ ...p, surfaceLoadMax: v }))
                 }
+                helperText="Gợi ý: 2,0 – 5,0 m³/m²·h (tải chuẩn 5 – 10 m³/m²·h tùy bùn cặn)"
               />
 
               <NumberField

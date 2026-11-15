@@ -932,6 +932,7 @@ export default function WastewaterBiology() {
                 else if (activeTab === 'mbr')
                   setMbr((p) => ({ ...p, srtDesign: v }));
               }}
+              helperText="Gợi ý: 5 – 15 ngày (Nitrat hóa: 10 – 20 ngày)"
             />
           </div>
 
@@ -1182,6 +1183,7 @@ export default function WastewaterBiology() {
               max={24}
               step={0.5}
               onChange={(v) => setSbr((p) => ({ ...p, cycleHours: v }))}
+              helperText="Gợi ý: 4 – 8 giờ / chu kỳ"
             />
             <NumberInput
               id="sbr-exchange"
@@ -1378,6 +1380,7 @@ export default function WastewaterBiology() {
                 onChange={(v) =>
                   setClarifier((p) => ({ ...p, surfaceLoadTarget: v }))
                 }
+                helperText="Gợi ý: 0,5 – 1,5 m³/m²·h (lắng sinh học)"
               />
 
               <NumberInput
@@ -1404,6 +1407,7 @@ export default function WastewaterBiology() {
                 onChange={(v) =>
                   setClarifier((p) => ({ ...p, weirLoadMax: v }))
                 }
+                helperText="Gợi ý: < 240 m³/m·ngày (< 10 m³/m·h)"
               />
 
               <NumberInput
@@ -1415,6 +1419,7 @@ export default function WastewaterBiology() {
                 max={6.0}
                 step={0.5}
                 onChange={(v) => setClarifier((p) => ({ ...p, hrtMin: v }))}
+                helperText="Gợi ý: 1,5 – 3,0 giờ"
               />
 
               <NumberInput
@@ -1702,6 +1707,7 @@ export default function WastewaterBiology() {
                 max={20}
                 step={0.5}
                 onChange={(v) => setUasb((p) => ({ ...p, olr: v }))}
+                helperText="Gợi ý: 2,0 – 10,0 kg COD/m³·ngày"
               />
               <NumberInput
                 id="uasb-h"
@@ -1727,6 +1733,7 @@ export default function WastewaterBiology() {
                 max={12}
                 step={0.25}
                 onChange={(v) => setAnoxic((p) => ({ ...p, hrtHours: v }))}
+                helperText="Gợi ý: 1 – 3 giờ"
               />
               <NumberInput
                 id="anoxic-no3-in"
@@ -1757,6 +1764,7 @@ export default function WastewaterBiology() {
                 max={8000}
                 step={100}
                 onChange={(v) => setAnoxic((p) => ({ ...p, mlss: v }))}
+                helperText="Gợi ý: 2.500 – 4.000 mg/L"
               />
               <NumberInput
                 id="anoxic-h"
@@ -1782,6 +1790,7 @@ export default function WastewaterBiology() {
                 max={6000}
                 step={100}
                 onChange={(v) => setAerotank((p) => ({ ...p, mlss: v }))}
+                helperText="Gợi ý: 2.500 – 4.000 mg/L (TCVN 7957:2008)"
               />
               <NumberInput
                 id="aero-h"
@@ -1807,6 +1816,7 @@ export default function WastewaterBiology() {
                 max={6000}
                 step={100}
                 onChange={(v) => setSbr((p) => ({ ...p, mlss: v }))}
+                helperText="Gợi ý: 3.000 – 5.000 mg/L"
               />
               <NumberInput
                 id="sbr-h"
@@ -1832,6 +1842,7 @@ export default function WastewaterBiology() {
                 max={70}
                 step={5}
                 onChange={(v) => setMbbr((p) => ({ ...p, mediaFillPct: v }))}
+                helperText="Gợi ý: 30 – 50 % thể tích bể"
               />
               <NumberInput
                 id="mbbr-ssa"
@@ -1842,6 +1853,7 @@ export default function WastewaterBiology() {
                 max={1200}
                 step={50}
                 onChange={(v) => setMbbr((p) => ({ ...p, mediaSsa: v }))}
+                helperText="Gợi ý: 400 – 800 m²/m³"
               />
               <NumberInput
                 id="mbbr-salr"
@@ -1877,6 +1889,7 @@ export default function WastewaterBiology() {
                 max={15000}
                 step={500}
                 onChange={(v) => setMbr((p) => ({ ...p, mlss: v }))}
+                helperText="Gợi ý: 8.000 – 12.000 mg/L"
               />
               <NumberInput
                 id="mbr-flux"
@@ -1887,6 +1900,7 @@ export default function WastewaterBiology() {
                 max={35}
                 step={1}
                 onChange={(v) => setMbr((p) => ({ ...p, fluxLmh: v }))}
+                helperText="Gợi ý: 15 – 25 LMH"
               />
               <NumberInput
                 id="mbr-h"

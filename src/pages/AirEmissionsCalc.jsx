@@ -385,6 +385,7 @@ export default function AirEmissionsCalc() {
                   setCyclone((p) => ({ ...p, bodyVelTarget: v }));
                   setCycloneOv(null);
                 }}
+                helperText="Gợi ý: 2,0 – 4,0 m/s"
               />
 
               <NumberField
@@ -407,6 +408,7 @@ export default function AirEmissionsCalc() {
                 max={35}
                 step={1}
                 onChange={(v) => setCyclone((p) => ({ ...p, inletVelMax: v }))}
+                helperText="Gợi ý: Vận tốc cửa vào tối ưu 15 – 20 m/s"
               />
             </div>
           </section>
@@ -589,6 +591,7 @@ export default function AirEmissionsCalc() {
                   setBaghouse((p) => ({ ...p, airToClothMMin: v }));
                   setBagOv(null);
                 }}
+                helperText="Gợi ý: 0,5 – 2,0 m/phút"
               />
 
               <NumberField
@@ -838,6 +841,7 @@ export default function AirEmissionsCalc() {
                   setScrubber((p) => ({ ...p, gasVelTarget: v }));
                   setScrubberOv(null);
                 }}
+                helperText="Gợi ý: 1,0 – 3,0 m/s"
               />
               <NumberField
                 id="scb-vmax"
@@ -1069,6 +1073,7 @@ export default function AirEmissionsCalc() {
                   setAdsorption((p) => ({ ...p, gasVelTarget: v }));
                   setAdsOv(null);
                 }}
+                helperText="Gợi ý: 0,2 – 0,5 m/s"
               />
 
               <NumberField
@@ -1096,6 +1101,7 @@ export default function AirEmissionsCalc() {
                   setAdsorption((p) => ({ ...p, ebctSec: v }));
                   setAdsOv(null);
                 }}
+                helperText="Gợi ý: 1 – 3 giây"
               />
 
               {adsorption.shape === 'Chữ nhật' && (
