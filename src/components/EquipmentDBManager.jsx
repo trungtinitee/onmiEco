@@ -187,9 +187,31 @@ function sanitizeDecimalInput(raw) {
   return `${parts[0]}.${parts.slice(1).join('')}`;
 }
 
+export function matchesMultiKeywordSearch(item, query) {
+  const keywords = String(query || '')
+    .split(';')
+    .map((kw) => kw.trim().toLowerCase())
+    .filter(Boolean);
+  if (keywords.length === 0) return true;
+
+  const combinedText = [
+    item?.name,
+    item?.id,
+    item?.specs,
+    item?.brand,
+    item?.category,
+    item?.note,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return keywords.every((kw) => combinedText.includes(kw));
+}
+
 const EMPTY_FORM = {
   id: '',
-  category: 'Bơm',
+  category: '',
   name: '',
   specs: '',
   power: '0',
@@ -276,6 +298,15 @@ export default function EquipmentDBManager() {
     });
   }, []);
 
+  const uniqueCategories = useMemo(() => {
+    const set = new Set();
+    equipments.forEach((item) => {
+      const cat = String(item.category || '').trim();
+      if (cat) set.add(cat);
+    });
+    return Array.from(set);
+  }, [equipments]);
+
   const availableCategories = useMemo(() => {
     const set = new Set(EQUIPMENT_CATEGORIES);
     equipments.forEach((item) => {
@@ -285,19 +316,11 @@ export default function EquipmentDBManager() {
   }, [equipments]);
 
   const filteredEquipments = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     return equipments.filter((item) => {
       const matchCat =
         selectedCategory === 'Tất cả' || item.category === selectedCategory;
       if (!matchCat) return false;
-      if (!q) return true;
-      return (
-        item.name.toLowerCase().includes(q) ||
-        item.specs.toLowerCase().includes(q) ||
-        item.brand.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q) ||
-        item.category.toLowerCase().includes(q)
-      );
+      return matchesMultiKeywordSearch(item, searchQuery);
     });
   }, [equipments, searchQuery, selectedCategory]);
 
@@ -653,7 +676,7 @@ export default function EquipmentDBManager() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm theo mã, tên thiết bị, thông số kỹ thuật, hãng SX..."
+              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; dn80)..."
               aria-label="Tìm kiếm thiết bị"
               className="w-full min-h-[44px] pl-10 pr-10 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
@@ -1007,20 +1030,22 @@ export default function EquipmentDBManager() {
                   >
                     Phân loại (Category)
                   </label>
-                  <select
+                  <input
                     id="eq-category"
+                    type="text"
+                    list="category-options"
                     value={formState.category}
                     onChange={(e) =>
                       setFormState((p) => ({ ...p, category: e.target.value }))
                     }
-                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  >
-                    {availableCategories.map((cat) => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
+                    placeholder="Chọn có sẵn hoặc nhập nhóm mới..."
+                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <datalist id="category-options">
+                    {uniqueCategories.map((cat) => (
+                      <option key={cat} value={cat} />
                     ))}
-                  </select>
+                  </datalist>
                 </div>
               </div>
 

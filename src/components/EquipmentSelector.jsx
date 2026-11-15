@@ -17,6 +17,7 @@ import {
   EQUIPMENT_STORAGE_KEY,
   EQUIPMENT_UPDATED_EVENT,
   loadEquipmentsFromStorage,
+  matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
 
 function sanitizeIntInput(raw) {
@@ -194,18 +195,11 @@ export default function EquipmentSelector({
   }, [catalog]);
 
   const filteredCatalog = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     return catalog.filter((item) => {
       if (categoryFilter !== 'Tất cả' && item.category !== categoryFilter) {
         return false;
       }
-      if (!q) return true;
-      return (
-        item.name.toLowerCase().includes(q) ||
-        item.specs.toLowerCase().includes(q) ||
-        item.brand.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q)
-      );
+      return matchesMultiKeywordSearch(item, searchQuery);
     });
   }, [catalog, searchQuery, categoryFilter]);
 
@@ -723,7 +717,7 @@ export default function EquipmentSelector({
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Tìm tên thiết bị, mã hiệu, thông số, hãng..."
+                    placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; dn80)..."
                     aria-label="Tìm kiếm thiết bị trong kho"
                     className="w-full min-h-[40px] pl-10 pr-10 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
                   />

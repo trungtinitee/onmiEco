@@ -21,6 +21,7 @@ import {
   EQUIPMENT_STORAGE_KEY,
   EQUIPMENT_UPDATED_EVENT,
   loadEquipmentsFromStorage,
+  matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
 
 export const PROCUREMENT_STORAGE_KEY = 'omnieco_project_procurement';
@@ -178,19 +179,11 @@ export default function ProcurementList() {
   }, [items]);
 
   const filteredItems = useMemo(() => {
-    const q = listSearch.trim().toLowerCase();
     return items.filter((item) => {
       if (listCategory !== 'Tất cả' && item.category !== listCategory) {
         return false;
       }
-      if (!q) return true;
-      return (
-        item.name.toLowerCase().includes(q) ||
-        item.specs.toLowerCase().includes(q) ||
-        item.brand.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q) ||
-        item.note.toLowerCase().includes(q)
-      );
+      return matchesMultiKeywordSearch(item, listSearch);
     });
   }, [items, listSearch, listCategory]);
 
@@ -231,18 +224,11 @@ export default function ProcurementList() {
   }, [catalog]);
 
   const filteredCatalog = useMemo(() => {
-    const q = modalSearch.trim().toLowerCase();
     return catalog.filter((item) => {
       if (modalCategory !== 'Tất cả' && item.category !== modalCategory) {
         return false;
       }
-      if (!q) return true;
-      return (
-        item.name.toLowerCase().includes(q) ||
-        item.specs.toLowerCase().includes(q) ||
-        item.brand.toLowerCase().includes(q) ||
-        item.id.toLowerCase().includes(q)
-      );
+      return matchesMultiKeywordSearch(item, modalSearch);
     });
   }, [catalog, modalSearch, modalCategory]);
 
@@ -504,7 +490,7 @@ export default function ProcurementList() {
               type="text"
               value={listSearch}
               onChange={(e) => setListSearch(e.target.value)}
-              placeholder="Tìm theo tên thiết bị, mã hiệu, thông số, hãng hoặc ghi chú..."
+              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; dn80)..."
               aria-label="Tìm kiếm trong danh mục mua sắm"
               className="w-full min-h-[44px] pl-10 pr-10 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
@@ -985,7 +971,7 @@ export default function ProcurementList() {
                     type="text"
                     value={modalSearch}
                     onChange={(e) => setModalSearch(e.target.value)}
-                    placeholder="Tìm tên thiết bị, mã hiệu, thông số, hãng..."
+                    placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; dn80)..."
                     aria-label="Tìm thiết bị trong kho"
                     className="w-full min-h-[40px] pl-10 pr-10 py-2 rounded-lg bg-slate-800 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
                   />
