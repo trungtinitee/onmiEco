@@ -1,7 +1,8 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import Layout from './components/Layout';
+import SplashScreen from './components/SplashScreen';
 import Dashboard from './pages/Dashboard';
 import WastewaterInput from './pages/WastewaterInput';
 import WastewaterPretreatment from './pages/WastewaterPretreatment';
@@ -53,11 +54,30 @@ const AppRoutes = memo(function AppRoutes() {
 });
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [isFadingOut, setIsFadingOut] = useState(false);
+
+  useEffect(() => {
+    let hideTimer;
+    const fadeTimer = window.setTimeout(() => {
+      setIsFadingOut(true);
+      hideTimer = window.setTimeout(() => {
+        setIsLoading(false);
+      }, 450);
+    }, 1600);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      if (hideTimer) window.clearTimeout(hideTimer);
+    };
+  }, []);
+
   const baseUrl = import.meta.env.BASE_URL || '/';
   const routerBase = baseUrl.startsWith('/') ? baseUrl : '/';
 
   return (
     <AppProvider>
+      {isLoading && <SplashScreen isFadingOut={isFadingOut} />}
       <BrowserRouter basename={routerBase}>
         <Layout>
           <AppRoutes />
