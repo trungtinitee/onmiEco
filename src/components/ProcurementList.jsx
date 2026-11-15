@@ -5,6 +5,7 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Filter,
+  Layers,
   LayoutGrid,
   List,
   Package,
@@ -193,6 +194,37 @@ export default function ProcurementList() {
     });
   }, [items, listSearch, listCategory]);
 
+  const groupedItems = useMemo(() => {
+    const groupsMap = new Map();
+    filteredItems.forEach((item) => {
+      const categoryName = (item.category || 'Khác').trim() || 'Khác';
+      if (!groupsMap.has(categoryName)) {
+        groupsMap.set(categoryName, []);
+      }
+      groupsMap.get(categoryName).push(item);
+    });
+
+    return Array.from(groupsMap.entries())
+      .sort(([catA], [catB]) => catA.localeCompare(catB, 'vi'))
+      .map(([category, groupItems]) => {
+        const groupUnits = groupItems.reduce(
+          (sum, it) => sum + (Number(it.quantity) || 0),
+          0
+        );
+        const groupPowerKw = groupItems.reduce(
+          (sum, it) =>
+            sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
+          0
+        );
+        return {
+          category,
+          items: groupItems,
+          groupUnits,
+          groupPowerKw,
+        };
+      });
+  }, [filteredItems]);
+
   const modalCategories = useMemo(() => {
     const set = new Set(catalog.map((c) => c.category).filter(Boolean));
     return ['Tất cả', ...Array.from(set)];
@@ -324,7 +356,15 @@ export default function ProcurementList() {
       'Ghi chú',
     ];
 
-    const rows = items.map((item) => [
+    const sortedItems = [...items].sort((a, b) => {
+      const catA = (a.category || 'Khác').trim() || 'Khác';
+      const catB = (b.category || 'Khác').trim() || 'Khác';
+      const catDiff = catA.localeCompare(catB, 'vi');
+      if (catDiff !== 0) return catDiff;
+      return (a.name || '').localeCompare(b.name || '', 'vi');
+    });
+
+    const rows = sortedItems.map((item) => [
       `${item.id} - ${item.category}`,
       item.name,
       item.specs || '',
@@ -545,10 +585,10 @@ export default function ProcurementList() {
         </div>
       </section>
 
-      {/* Procurement BOM List (Table or Grid) */}
-      <section className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible">
+      {/* Procurement BOM List Grouped by Category (Table or Grid) */}
+      <section className="space-y-5 pb-24 print:pb-0 print:bg-white print:text-black">
         {items.length === 0 ? (
-          <div className="p-10 text-center space-y-3 print:bg-white print:text-black">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-3 print:bg-white print:border-gray-300 print:text-black">
             <ShoppingCart className="h-10 w-10 text-slate-600 mx-auto print:hidden" />
             <h2 className="text-base font-semibold text-slate-200 print:text-black">
               Danh mục mua sắm (BOM) đang trống
@@ -573,290 +613,322 @@ export default function ProcurementList() {
             </div>
           </div>
         ) : filteredItems.length === 0 ? (
-          <div className="p-10 text-center space-y-2 text-sm text-slate-400 print:text-black">
+          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-2 text-sm text-slate-400 print:bg-white print:border-gray-300 print:text-black">
             Không tìm thấy thiết bị nào trong danh mục mua sắm khớp với bộ lọc hiện
             tại.
           </div>
-        ) : viewMode === 'table' ? (
-          <div className="overflow-x-auto pb-24 print:pb-0 print:overflow-visible print:bg-white print:text-black">
-            <table className="w-full text-left border-collapse text-sm print:text-black">
-              <thead>
-                <tr className="bg-slate-900/80 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-100 print:text-black print:border-gray-300">
-                  <th className="py-3 px-4 font-semibold whitespace-nowrap">
-                    STT / Mã
-                  </th>
-                  <th className="py-3 px-4 font-semibold">
-                    Thiết bị & Thông số kỹ thuật
-                  </th>
-                  <th className="py-3 px-4 font-semibold">Hãng SX</th>
-                  <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
-                    P đơn vị (kW)
-                  </th>
-                  <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
-                    SL Cần mua
-                  </th>
-                  <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
-                    Tổng P (kW)
-                  </th>
-                  <th className="py-3 px-4 font-semibold min-w-[180px]">
-                    Ghi chú mua sắm
-                  </th>
-                  <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
-                    Xóa
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
-                {filteredItems.map((item, idx) => {
-                  const rowPowerKw =
-                    (Number(item.quantity) || 0) * (Number(item.power) || 0);
-                  return (
-                    <tr
-                      key={item.id}
-                      className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
-                    >
-                      <td className="py-3 px-4 align-top whitespace-nowrap">
-                        <div className="font-mono text-xs text-slate-400 print:text-black">
-                          #{idx + 1} · {item.id}
-                        </div>
-                        <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-emerald-400 print:bg-white print:border-gray-400 print:text-black">
-                          {item.category}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 align-top min-w-[220px]">
-                        <div className="font-semibold text-slate-100 print:text-black">
-                          {item.name}
-                        </div>
-                        <div className="mt-0.5 text-xs text-slate-400 print:text-gray-700">
-                          {item.specs || 'Chưa có mô tả thông số'}
-                        </div>
-                      </td>
-
-                      <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:text-black">
-                        {item.brand || '—'}
-                      </td>
-
-                      <td className="py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black">
-                        {Number(item.power || 0).toFixed(2)}
-                      </td>
-
-                      <td className="py-3 px-4 align-middle text-center whitespace-nowrap">
-                        <div className="print:hidden inline-flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            aria-label={`Số lượng cần mua ${item.name}`}
-                            value={String(item.quantity ?? 0)}
-                            onChange={(e) =>
-                              handleQuantityChange(item.id, e.target.value)
-                            }
-                            className="w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                          />
-                          <span className="text-xs text-slate-400">
-                            {item.unit}
-                          </span>
-                        </div>
-                        <span className="hidden print:inline font-mono text-black">
-                          {item.quantity} {item.unit}
-                        </span>
-                      </td>
-
-                      <td className="py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black">
-                        {rowPowerKw.toFixed(2)} kW
-                      </td>
-
-                      <td className="py-3 px-4 align-middle">
-                        <input
-                          type="text"
-                          value={item.note}
-                          onChange={(e) =>
-                            handleNoteChange(item.id, e.target.value)
-                          }
-                          placeholder="VD: Mua gấp, Chờ duyệt..."
-                          aria-label={`Ghi chú mua sắm ${item.name}`}
-                          className="print:hidden w-full rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="hidden print:inline text-xs text-black">
-                          {item.note || '—'}
-                        </span>
-                      </td>
-
-                      <td className="print:hidden py-3 px-4 align-middle text-right whitespace-nowrap overflow-visible">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(item.id)}
-                          aria-label={`Xóa ${item.name}`}
-                          className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
-                        >
-                          <Trash2 className="h-4 w-4 pointer-events-none" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot>
-                <tr className="bg-slate-900/70 border-t border-slate-700 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
-                  <td className="py-3 px-4 text-slate-300 print:text-black" colSpan={4}>
-                    Tổng cộng toàn danh mục mua sắm ({items.length} chủng loại)
-                  </td>
-                  <td className="py-3 px-4 text-center font-mono text-emerald-400 print:text-black">
-                    {totals.totalUnits}
-                  </td>
-                  <td className="py-3 px-4 text-right font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
-                    {totals.totalPowerKw.toFixed(2)} kW
-                  </td>
-                  <td className="py-3 px-4" />
-                  <td className="print:hidden" />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
         ) : (
-          <div className="p-4 sm:p-5 pb-24 space-y-4 print:p-0 print:pb-0 print:bg-white print:text-black">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
-              {filteredItems.map((item, idx) => {
-                const rowPowerKw =
-                  (Number(item.quantity) || 0) * (Number(item.power) || 0);
-                return (
-                  <article
-                    key={item.id}
-                    className="rounded-xl bg-slate-900/80 border border-slate-700/80 shadow-lg p-4 flex flex-col justify-between gap-3.5 hover:border-emerald-500/40 transition-colors print:bg-white print:border-gray-300 print:shadow-none print:text-black print:break-inside-avoid"
-                  >
-                    <div className="space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 space-y-1">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
-                              #{idx + 1} · {item.id}
-                            </span>
-                            <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-emerald-400 print:bg-white print:border-gray-400 print:text-black">
-                              {item.category}
-                            </span>
-                          </div>
-                          <h3 className="text-sm font-semibold text-slate-100 leading-snug print:text-black">
-                            {item.name}
-                          </h3>
-                        </div>
+          <>
+            {groupedItems.map((group) => (
+              <div
+                key={group.category}
+                className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
+              >
+                {/* Category Group Header */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/90 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
+                  <h3 className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-2 print:text-black">
+                    <Layers className="h-4 w-4 shrink-0 text-emerald-400 print:text-black" />
+                    <span>{group.category}</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black">
+                      {group.items.length} vật tư
+                    </span>
+                  </h3>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveItem(item.id)}
-                          aria-label={`Xóa ${item.name}`}
-                          title="Xóa khỏi danh mục mua sắm"
-                          className="print:hidden relative z-20 cursor-pointer select-none shrink-0 inline-flex items-center gap-1 min-h-[32px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-xs font-medium text-red-400 transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
-                          <span className="pointer-events-none">Xóa</span>
-                        </button>
-                      </div>
+                  <div className="flex items-center gap-3 text-xs text-slate-400 font-mono tabular-nums print:text-black">
+                    <span>
+                      SL:{' '}
+                      <strong className="text-slate-200 print:text-black">
+                        {group.groupUnits}
+                      </strong>
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      Tổng P:{' '}
+                      <strong className="text-amber-300 print:text-black">
+                        {group.groupPowerKw.toFixed(2)} kW
+                      </strong>
+                    </span>
+                  </div>
+                </div>
 
-                      <div className="space-y-1 text-xs text-slate-400 print:text-gray-800">
-                        <div>
-                          <span className="text-slate-500 print:text-gray-600">
-                            Hãng SX:{' '}
-                          </span>
-                          <span className="text-slate-300 print:text-black">
-                            {item.brand || '—'}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-slate-500 print:text-gray-600">
-                            Thông số:{' '}
-                          </span>
-                          <span className="print:text-black">
-                            {item.specs || 'Chưa có mô tả thông số'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between gap-2 pt-0.5">
-                          <span>
-                            <span className="text-slate-500 print:text-gray-600">
-                              P đơn vị:{' '}
-                            </span>
-                            <span className="font-mono font-semibold text-slate-200 print:text-black">
-                              {Number(item.power || 0).toFixed(2)} kW
-                            </span>
-                          </span>
-                          <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
-                            ĐVT: {item.unit || 'Cái'}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="pt-3 border-t border-slate-800 space-y-2.5 print:border-gray-300">
-                      <div className="grid grid-cols-3 gap-2.5 items-end">
-                        <div>
-                          <label
-                            htmlFor={`bom-qty-${item.id}`}
-                            className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
-                          >
+                {viewMode === 'table' ? (
+                  <div className="overflow-x-auto print:overflow-visible print:bg-white print:text-black">
+                    <table className="w-full text-left border-collapse text-sm print:text-black">
+                      <thead>
+                        <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
+                          <th className="py-3 px-4 font-semibold whitespace-nowrap">
+                            STT / Mã
+                          </th>
+                          <th className="py-3 px-4 font-semibold">
+                            Thiết bị & Thông số kỹ thuật
+                          </th>
+                          <th className="py-3 px-4 font-semibold">Hãng SX</th>
+                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                            P đơn vị (kW)
+                          </th>
+                          <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
                             SL Cần mua
-                          </label>
-                          <input
-                            id={`bom-qty-${item.id}`}
-                            type="text"
-                            inputMode="numeric"
-                            aria-label={`Số lượng cần mua ${item.name}`}
-                            value={String(item.quantity ?? 0)}
-                            onChange={(e) =>
-                              handleQuantityChange(item.id, e.target.value)
-                            }
-                            className="print:hidden w-full text-center rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                          />
-                          <span className="hidden print:inline font-mono text-sm font-semibold text-black">
-                            {item.quantity} {item.unit}
-                          </span>
-                        </div>
-
-                        <div className="col-span-2">
-                          <label
-                            htmlFor={`bom-note-${item.id}`}
-                            className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
-                          >
+                          </th>
+                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                            Tổng P (kW)
+                          </th>
+                          <th className="py-3 px-4 font-semibold min-w-[180px]">
                             Ghi chú mua sắm
-                          </label>
-                          <input
-                            id={`bom-note-${item.id}`}
-                            type="text"
-                            value={item.note}
-                            onChange={(e) =>
-                              handleNoteChange(item.id, e.target.value)
-                            }
-                            placeholder="VD: Mua gấp, Chờ duyệt..."
-                            className="print:hidden w-full rounded-md bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                          />
-                          <span className="hidden print:inline text-xs text-black">
-                            {item.note || '—'}
-                          </span>
-                        </div>
-                      </div>
+                          </th>
+                          <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
+                            Xóa
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
+                        {group.items.map((item, idx) => {
+                          const rowPowerKw =
+                            (Number(item.quantity) || 0) *
+                            (Number(item.power) || 0);
+                          return (
+                            <tr
+                              key={item.id}
+                              className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
+                            >
+                              <td className="py-3 px-4 align-top whitespace-nowrap">
+                                <div className="font-mono text-xs text-slate-400 print:text-black">
+                                  #{idx + 1} · {item.id}
+                                </div>
+                                <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-emerald-400 print:bg-white print:border-gray-400 print:text-black">
+                                  {item.category}
+                                </span>
+                              </td>
 
-                      <div className="flex items-center justify-between text-xs pt-1">
-                        <span className="text-slate-400 print:text-gray-700">
-                          Tổng công suất mục này:
-                        </span>
-                        <span className="font-mono text-sm font-bold text-amber-300 tabular-nums print:text-black">
-                          {rowPowerKw.toFixed(2)} kW
-                        </span>
-                      </div>
+                              <td className="py-3 px-4 align-top min-w-[220px]">
+                                <div className="font-semibold text-slate-100 print:text-black">
+                                  {item.name}
+                                </div>
+                                <div className="mt-0.5 text-xs text-slate-400 print:text-gray-700">
+                                  {item.specs || 'Chưa có mô tả thông số'}
+                                </div>
+                              </td>
+
+                              <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:text-black">
+                                {item.brand || '—'}
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black">
+                                {Number(item.power || 0).toFixed(2)}
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-center whitespace-nowrap">
+                                <div className="print:hidden inline-flex items-center gap-1.5">
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    aria-label={`Số lượng cần mua ${item.name}`}
+                                    value={String(item.quantity ?? 0)}
+                                    onChange={(e) =>
+                                      handleQuantityChange(
+                                        item.id,
+                                        e.target.value
+                                      )
+                                    }
+                                    className="w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                                  />
+                                  <span className="text-xs text-slate-400">
+                                    {item.unit}
+                                  </span>
+                                </div>
+                                <span className="hidden print:inline font-mono text-black">
+                                  {item.quantity} {item.unit}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black">
+                                {rowPowerKw.toFixed(2)} kW
+                              </td>
+
+                              <td className="py-3 px-4 align-middle">
+                                <input
+                                  type="text"
+                                  value={item.note}
+                                  onChange={(e) =>
+                                    handleNoteChange(item.id, e.target.value)
+                                  }
+                                  placeholder="VD: Mua gấp, Chờ duyệt..."
+                                  aria-label={`Ghi chú mua sắm ${item.name}`}
+                                  className="print:hidden w-full rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                                />
+                                <span className="hidden print:inline text-xs text-black">
+                                  {item.note || '—'}
+                                </span>
+                              </td>
+
+                              <td className="print:hidden py-3 px-4 align-middle text-right whitespace-nowrap overflow-visible">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  aria-label={`Xóa ${item.name}`}
+                                  className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
+                                >
+                                  <Trash2 className="h-4 w-4 pointer-events-none" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 sm:p-5 print:p-3 print:bg-white print:text-black">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+                      {group.items.map((item, idx) => {
+                        const rowPowerKw =
+                          (Number(item.quantity) || 0) *
+                          (Number(item.power) || 0);
+                        return (
+                          <article
+                            key={item.id}
+                            className="rounded-xl bg-slate-900/80 border border-slate-700/80 shadow-lg p-4 flex flex-col justify-between gap-3.5 hover:border-emerald-500/40 transition-colors print:bg-white print:border-gray-300 print:shadow-none print:text-black print:break-inside-avoid"
+                          >
+                            <div className="space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
+                                      #{idx + 1} · {item.id}
+                                    </span>
+                                    <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-emerald-400 print:bg-white print:border-gray-400 print:text-black">
+                                      {item.category}
+                                    </span>
+                                  </div>
+                                  <h4 className="text-sm font-semibold text-slate-100 leading-snug print:text-black">
+                                    {item.name}
+                                  </h4>
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(item.id)}
+                                  aria-label={`Xóa ${item.name}`}
+                                  title="Xóa khỏi danh mục mua sắm"
+                                  className="print:hidden relative z-20 cursor-pointer select-none shrink-0 inline-flex items-center gap-1 min-h-[32px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-xs font-medium text-red-400 transition-colors"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                                  <span className="pointer-events-none">Xóa</span>
+                                </button>
+                              </div>
+
+                              <div className="space-y-1 text-xs text-slate-400 print:text-gray-800">
+                                <div>
+                                  <span className="text-slate-500 print:text-gray-600">
+                                    Hãng SX:{' '}
+                                  </span>
+                                  <span className="text-slate-300 print:text-black">
+                                    {item.brand || '—'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 print:text-gray-600">
+                                    Thông số:{' '}
+                                  </span>
+                                  <span className="print:text-black">
+                                    {item.specs || 'Chưa có mô tả thông số'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 pt-0.5">
+                                  <span>
+                                    <span className="text-slate-500 print:text-gray-600">
+                                      P đơn vị:{' '}
+                                    </span>
+                                    <span className="font-mono font-semibold text-slate-200 print:text-black">
+                                      {Number(item.power || 0).toFixed(2)} kW
+                                    </span>
+                                  </span>
+                                  <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
+                                    ĐVT: {item.unit || 'Cái'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-800 space-y-2.5 print:border-gray-300">
+                              <div className="grid grid-cols-3 gap-2.5 items-end">
+                                <div>
+                                  <label
+                                    htmlFor={`bom-qty-${item.id}`}
+                                    className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
+                                  >
+                                    SL Cần mua
+                                  </label>
+                                  <input
+                                    id={`bom-qty-${item.id}`}
+                                    type="text"
+                                    inputMode="numeric"
+                                    aria-label={`Số lượng cần mua ${item.name}`}
+                                    value={String(item.quantity ?? 0)}
+                                    onChange={(e) =>
+                                      handleQuantityChange(
+                                        item.id,
+                                        e.target.value
+                                      )
+                                    }
+                                    className="print:hidden w-full text-center rounded-md bg-slate-800 border border-slate-700 px-2 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                                  />
+                                  <span className="hidden print:inline font-mono text-sm font-semibold text-black">
+                                    {item.quantity} {item.unit}
+                                  </span>
+                                </div>
+
+                                <div className="col-span-2">
+                                  <label
+                                    htmlFor={`bom-note-${item.id}`}
+                                    className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
+                                  >
+                                    Ghi chú mua sắm
+                                  </label>
+                                  <input
+                                    id={`bom-note-${item.id}`}
+                                    type="text"
+                                    value={item.note}
+                                    onChange={(e) =>
+                                      handleNoteChange(item.id, e.target.value)
+                                    }
+                                    placeholder="VD: Mua gấp, Chờ duyệt..."
+                                    className="print:hidden w-full rounded-md bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                                  />
+                                  <span className="hidden print:inline text-xs text-black">
+                                    {item.note || '—'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs pt-1">
+                                <span className="text-slate-400 print:text-gray-700">
+                                  Tổng công suất mục này:
+                                </span>
+                                <span className="font-mono text-sm font-bold text-amber-300 tabular-nums print:text-black">
+                                  {rowPowerKw.toFixed(2)} kW
+                                </span>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
-                  </article>
-                );
-              })}
-            </div>
+                  </div>
+                )}
+              </div>
+            ))}
 
-            <div className="rounded-lg bg-slate-900/70 border border-slate-700 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
+            {/* Grand Total Summary */}
+            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
               <span>
-                Tổng cộng danh mục mua sắm ({items.length} chủng loại ·{' '}
-                {totals.totalUnits} thiết bị)
+                Tổng cộng toàn danh mục mua sắm ({groupedItems.length} nhóm ·{' '}
+                {items.length} chủng loại · {totals.totalUnits} thiết bị)
               </span>
               <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
                 {totals.totalPowerKw.toFixed(2)} kW
               </span>
             </div>
-          </div>
+          </>
         )}
       </section>
 
