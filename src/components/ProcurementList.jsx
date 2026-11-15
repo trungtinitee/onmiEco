@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Building2,
   Check,
+  Edit3,
   ExternalLink,
   FileSpreadsheet,
   Filter,
@@ -9,6 +11,7 @@ import {
   LayoutGrid,
   List,
   Package,
+  PackageCheck,
   Plus,
   Printer,
   Search,
@@ -26,6 +29,7 @@ import {
 
 export const PROCUREMENT_STORAGE_KEY = 'omnieco_project_procurement';
 
+const DEFAULT_UNIT_PROCESS = 'Hạng mục chung';
 const QUICK_NOTES = ['Mua gấp', 'Chờ duyệt', 'Đang hỏi giá', 'Đã đặt hàng'];
 
 function sanitizeIntInput(raw) {
@@ -45,6 +49,21 @@ function parsePositiveInt(raw, fallback = 1) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
+function createBomId() {
+  return `BOM-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeUnitProcess(raw) {
+  const trimmed = String(raw || '').trim();
+  return trimmed || DEFAULT_UNIT_PROCESS;
+}
+
+function getConsolidationKey(item) {
+  const rawCode = String(item?.code || '').trim();
+  const rawId = String(item?.id || '').trim();
+  return (rawCode || rawId).toLowerCase();
+}
+
 function loadProcurementFromStorage() {
   if (typeof window === 'undefined') return [];
   try {
@@ -54,8 +73,11 @@ function loadProcurementFromStorage() {
     if (!Array.isArray(parsed)) return [];
     return parsed
       .filter((item) => item && typeof item === 'object' && item.id && item.name)
-      .map((item) => ({
+      .map((item, index) => ({
+        bomId: String(item.bomId || `BOM-LEGACY-${index}-${item.id}`),
         id: String(item.id),
+        code: item.code ? String(item.code).trim() : '',
+        unitProcess: normalizeUnitProcess(item.unitProcess),
         category: String(item.category || 'Khác'),
         name: String(item.name),
         specs: String(item.specs || ''),
@@ -83,6 +105,9 @@ export default function ProcurementList() {
   const [items, setItems] = useState(() => loadProcurementFromStorage());
   const [catalog, setCatalog] = useState(() => loadEquipmentsFromStorage());
 
+  // Chế độ hiển thị BOM: 'detailed' (Chi tiết theo công trình - Mặc định) | 'consolidated' (Tổng hợp mua sắm)
+  const [bomMode, setBomMode] = useState('detailed');
+
   const [viewMode, setViewMode] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 768 ? 'grid' : 'table'
   );
@@ -94,9 +119,11 @@ export default function ProcurementList() {
   const [listCategory, setListCategory] = useState('Tất cả');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingBomId, setEditingBomId] = useState(null);
   const [modalSearch, setModalSearch] = useState('');
   const [modalCategory, setModalCategory] = useState('Tất cả');
   const [pickedEquipment, setPickedEquipment] = useState(null);
+  const [unitProcessInput, setUnitProcessInput] = useState('');
   const [quantityInput, setQuantityInput] = useState('1');
   const [noteInput, setNoteInput] = useState('');
   const [modalError, setModalError] = useState('');
@@ -146,7 +173,10 @@ export default function ProcurementList() {
   useEffect(() => {
     if (!isModalOpen) return undefined;
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') setIsModalOpen(false);
+      if (e.key === 'Escape') {
+        setIsModalOpen(false);
+        setEditingBomId(null);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -159,6 +189,16 @@ export default function ProcurementList() {
       return next;
     });
   }, []);
+
+  // Danh sách gợi ý Hạng mục / Công trình đã có trong BOM
+  const unitProcessOptions = useMemo(() => {
+    const uniqueSet = new Set();
+    items.forEach((item) => {
+      const up = String(item.unitProcess || '').trim();
+      if (up) uniqueSet.add(up);
+    });
+    return Array.from(uniqueSet).sort((a, b) => a.localeCompare(b, 'vi'));
+  }, [items]);
 
   const totals = useMemo(() => {
     return items.reduce(
@@ -173,23 +213,148 @@ export default function ProcurementList() {
     );
   }, [items]);
 
+  // Tổng hợp cộng dồn theo id hoặc code trên toàn bộ BOM
+  const consolidatedAllItems = useMemo(() => {
+    const map = new Map();
+
+    items.forEach((item) => {
+      const key = getConsolidationKey(item);
+      const qty = Number(item.quantity) || 0;
+      const trimmedNote = String(item.note || '').trim();
+      const unitProc = normalizeUnitProcess(item.unitProcess);
+
+      if (!map.has(key)) {
+        map.set(key, {
+          consolidationKey: key,
+          id: item.id,
+          code: item.code || item.id,
+          category: String(item.category || 'Khác'),
+          name: item.name,
+          specs: item.specs || '',
+          power: Number(item.power) || 0,
+          brand: item.brand || '',
+          unit: item.unit || 'Cái',
+          quantity: qty,
+          notesList: trimmedNote ? [trimmedNote] : [],
+          breakdownMap: new Map([[unitProc, qty]]),
+        });
+      } else {
+        const existing = map.get(key);
+        existing.quantity += qty;
+        if (trimmedNote && !existing.notesList.includes(trimmedNote)) {
+          existing.notesList.push(trimmedNote);
+        }
+        existing.breakdownMap.set(
+          unitProc,
+          (existing.breakdownMap.get(unitProc) || 0) + qty
+        );
+      }
+    });
+
+    return Array.from(map.values()).map((entry) => {
+      const unitProcessBreakdown = Array.from(entry.breakdownMap.entries())
+        .map(([unitProcess, qty]) => ({ unitProcess, quantity: qty }))
+        .sort((a, b) => a.unitProcess.localeCompare(b.unitProcess, 'vi'));
+
+      return {
+        consolidationKey: entry.consolidationKey,
+        id: entry.id,
+        code: entry.code,
+        category: entry.category,
+        name: entry.name,
+        specs: entry.specs,
+        power: entry.power,
+        brand: entry.brand,
+        unit: entry.unit,
+        quantity: entry.quantity,
+        note: entry.notesList.join('; '),
+        unitProcessBreakdown,
+        unitProcessSummary: unitProcessBreakdown
+          .map((b) => `${b.unitProcess} (${b.quantity})`)
+          .join(', '),
+      };
+    });
+  }, [items]);
+
   const listCategories = useMemo(() => {
     const set = new Set(items.map((item) => item.category).filter(Boolean));
     return ['Tất cả', ...Array.from(set)];
   }, [items]);
 
-  const filteredItems = useMemo(() => {
+  // Lọc ở chế độ Chi tiết theo công trình
+  const filteredDetailedItems = useMemo(() => {
     return items.filter((item) => {
       if (listCategory !== 'Tất cả' && item.category !== listCategory) {
         return false;
       }
-      return matchesMultiKeywordSearch(item, listSearch);
+      const searchableItem = {
+        ...item,
+        note: [item.note, item.unitProcess, item.code].filter(Boolean).join(' '),
+      };
+      return matchesMultiKeywordSearch(searchableItem, listSearch);
     });
   }, [items, listSearch, listCategory]);
 
-  const groupedItems = useMemo(() => {
+  // Gom nhóm theo Hạng mục / Công trình (Detailed Mode)
+  const detailedGroupedByProcess = useMemo(() => {
     const groupsMap = new Map();
-    filteredItems.forEach((item) => {
+    filteredDetailedItems.forEach((item) => {
+      const processName = normalizeUnitProcess(item.unitProcess);
+      if (!groupsMap.has(processName)) {
+        groupsMap.set(processName, []);
+      }
+      groupsMap.get(processName).push(item);
+    });
+
+    return Array.from(groupsMap.entries())
+      .sort(([procA], [procB]) => procA.localeCompare(procB, 'vi'))
+      .map(([unitProcess, groupItems]) => {
+        const sortedGroupItems = [...groupItems].sort((a, b) => {
+          const catDiff = (a.category || '').localeCompare(
+            b.category || '',
+            'vi'
+          );
+          if (catDiff !== 0) return catDiff;
+          return (a.name || '').localeCompare(b.name || '', 'vi');
+        });
+        const groupUnits = sortedGroupItems.reduce(
+          (sum, it) => sum + (Number(it.quantity) || 0),
+          0
+        );
+        const groupPowerKw = sortedGroupItems.reduce(
+          (sum, it) =>
+            sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
+          0
+        );
+        return {
+          unitProcess,
+          items: sortedGroupItems,
+          groupUnits,
+          groupPowerKw,
+        };
+      });
+  }, [filteredDetailedItems]);
+
+  // Lọc ở chế độ Tổng hợp mua sắm
+  const filteredConsolidatedItems = useMemo(() => {
+    return consolidatedAllItems.filter((item) => {
+      if (listCategory !== 'Tất cả' && item.category !== listCategory) {
+        return false;
+      }
+      const searchableItem = {
+        ...item,
+        note: [item.note, item.unitProcessSummary, item.code]
+          .filter(Boolean)
+          .join(' '),
+      };
+      return matchesMultiKeywordSearch(searchableItem, listSearch);
+    });
+  }, [consolidatedAllItems, listSearch, listCategory]);
+
+  // Gom nhóm theo Category (Consolidated Mode)
+  const consolidatedGroupedByCategory = useMemo(() => {
+    const groupsMap = new Map();
+    filteredConsolidatedItems.forEach((item) => {
       const categoryName = (item.category || 'Khác').trim() || 'Khác';
       if (!groupsMap.has(categoryName)) {
         groupsMap.set(categoryName, []);
@@ -200,23 +365,26 @@ export default function ProcurementList() {
     return Array.from(groupsMap.entries())
       .sort(([catA], [catB]) => catA.localeCompare(catB, 'vi'))
       .map(([category, groupItems]) => {
-        const groupUnits = groupItems.reduce(
+        const sortedGroupItems = [...groupItems].sort((a, b) =>
+          (a.name || '').localeCompare(b.name || '', 'vi')
+        );
+        const groupUnits = sortedGroupItems.reduce(
           (sum, it) => sum + (Number(it.quantity) || 0),
           0
         );
-        const groupPowerKw = groupItems.reduce(
+        const groupPowerKw = sortedGroupItems.reduce(
           (sum, it) =>
             sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
           0
         );
         return {
           category,
-          items: groupItems,
+          items: sortedGroupItems,
           groupUnits,
           groupPowerKw,
         };
       });
-  }, [filteredItems]);
+  }, [filteredConsolidatedItems]);
 
   const modalCategories = useMemo(() => {
     const set = new Set(catalog.map((c) => c.category).filter(Boolean));
@@ -232,22 +400,67 @@ export default function ProcurementList() {
     });
   }, [catalog, modalSearch, modalCategory]);
 
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setEditingBomId(null);
+    setModalError('');
+  }, []);
+
   const openAddModal = useCallback(() => {
     refreshCatalog();
+    setEditingBomId(null);
     setModalSearch('');
     setModalCategory('Tất cả');
     setPickedEquipment(null);
+    setUnitProcessInput('');
     setQuantityInput('1');
     setNoteInput('');
     setModalError('');
     setIsModalOpen(true);
   }, [refreshCatalog]);
 
-  const handleConfirmAdd = useCallback(
+  const openEditModal = useCallback(
+    (bomItem) => {
+      const latestCatalog = loadEquipmentsFromStorage();
+      setCatalog(latestCatalog);
+
+      const matched =
+        latestCatalog.find((eq) => eq.id === bomItem.id) || {
+          id: bomItem.id,
+          code: bomItem.code || '',
+          category: bomItem.category,
+          name: bomItem.name,
+          specs: bomItem.specs,
+          power: bomItem.power,
+          brand: bomItem.brand,
+          unit: bomItem.unit || 'Cái',
+        };
+
+      setEditingBomId(bomItem.bomId);
+      setModalSearch('');
+      setModalCategory('Tất cả');
+      setPickedEquipment(matched);
+      setUnitProcessInput(bomItem.unitProcess || '');
+      setQuantityInput(String(bomItem.quantity ?? 1));
+      setNoteInput(bomItem.note || '');
+      setModalError('');
+      setIsModalOpen(true);
+    },
+    []
+  );
+
+  const handleSaveModal = useCallback(
     (e) => {
       e.preventDefault();
       if (!pickedEquipment) {
         setModalError('Vui lòng chọn một thiết bị trong danh sách bên trên.');
+        return;
+      }
+      const trimmedUnitProcess = unitProcessInput.trim();
+      if (!trimmedUnitProcess) {
+        setModalError(
+          'Vui lòng nhập Hạng mục / Công trình (Bắt buộc) cho thiết bị này.'
+        );
         return;
       }
       const qty = parsePositiveInt(quantityInput, 0);
@@ -257,53 +470,98 @@ export default function ProcurementList() {
       }
       const trimmedNote = noteInput.trim();
 
-      updateItems((prev) => {
-        const existingIdx = prev.findIndex((i) => i.id === pickedEquipment.id);
-        if (existingIdx >= 0) {
-          return prev.map((item, idx) =>
-            idx === existingIdx
+      if (editingBomId) {
+        updateItems((prev) =>
+          prev.map((item) =>
+            item.bomId === editingBomId
               ? {
                   ...item,
+                  id: pickedEquipment.id,
+                  code: pickedEquipment.code
+                    ? String(pickedEquipment.code).trim()
+                    : item.code || '',
+                  unitProcess: trimmedUnitProcess,
                   category: pickedEquipment.category,
                   name: pickedEquipment.name,
                   specs: pickedEquipment.specs,
                   power: Number(pickedEquipment.power) || 0,
                   brand: pickedEquipment.brand,
                   unit: pickedEquipment.unit || 'Cái',
-                  quantity: (Number(item.quantity) || 0) + qty,
-                  note: trimmedNote || item.note,
+                  quantity: qty,
+                  note: trimmedNote,
                 }
               : item
+          )
+        );
+      } else {
+        updateItems((prev) => {
+          const normalizedTargetProcess = trimmedUnitProcess.toLowerCase();
+          const existingIdx = prev.findIndex(
+            (i) =>
+              i.id === pickedEquipment.id &&
+              normalizeUnitProcess(i.unitProcess).toLowerCase() ===
+                normalizedTargetProcess
           );
-        }
-        return [
-          ...prev,
-          {
-            id: pickedEquipment.id,
-            category: pickedEquipment.category,
-            name: pickedEquipment.name,
-            specs: pickedEquipment.specs,
-            power: Number(pickedEquipment.power) || 0,
-            brand: pickedEquipment.brand,
-            unit: pickedEquipment.unit || 'Cái',
-            quantity: qty,
-            note: trimmedNote,
-          },
-        ];
-      });
+          if (existingIdx >= 0) {
+            return prev.map((item, idx) =>
+              idx === existingIdx
+                ? {
+                    ...item,
+                    unitProcess: trimmedUnitProcess,
+                    category: pickedEquipment.category,
+                    name: pickedEquipment.name,
+                    specs: pickedEquipment.specs,
+                    power: Number(pickedEquipment.power) || 0,
+                    brand: pickedEquipment.brand,
+                    unit: pickedEquipment.unit || 'Cái',
+                    quantity: (Number(item.quantity) || 0) + qty,
+                    note: trimmedNote || item.note,
+                  }
+                : item
+            );
+          }
+          return [
+            ...prev,
+            {
+              bomId: createBomId(),
+              id: pickedEquipment.id,
+              code: pickedEquipment.code
+                ? String(pickedEquipment.code).trim()
+                : '',
+              unitProcess: trimmedUnitProcess,
+              category: pickedEquipment.category,
+              name: pickedEquipment.name,
+              specs: pickedEquipment.specs,
+              power: Number(pickedEquipment.power) || 0,
+              brand: pickedEquipment.brand,
+              unit: pickedEquipment.unit || 'Cái',
+              quantity: qty,
+              note: trimmedNote,
+            },
+          ];
+        });
+      }
 
-      setIsModalOpen(false);
+      closeModal();
     },
-    [pickedEquipment, quantityInput, noteInput, updateItems]
+    [
+      pickedEquipment,
+      unitProcessInput,
+      quantityInput,
+      noteInput,
+      editingBomId,
+      updateItems,
+      closeModal,
+    ]
   );
 
   const handleQuantityChange = useCallback(
-    (equipmentId, rawValue) => {
+    (bomId, rawValue) => {
       const sanitized = sanitizeIntInput(rawValue);
       const parsed = sanitized === '' ? 0 : parsePositiveInt(sanitized, 0);
       updateItems((prev) =>
         prev.map((item) =>
-          item.id === equipmentId ? { ...item, quantity: parsed } : item
+          item.bomId === bomId ? { ...item, quantity: parsed } : item
         )
       );
     },
@@ -311,10 +569,10 @@ export default function ProcurementList() {
   );
 
   const handleNoteChange = useCallback(
-    (equipmentId, rawNote) => {
+    (bomId, rawNote) => {
       updateItems((prev) =>
         prev.map((item) =>
-          item.id === equipmentId ? { ...item, note: rawNote } : item
+          item.bomId === bomId ? { ...item, note: rawNote } : item
         )
       );
     },
@@ -322,8 +580,8 @@ export default function ProcurementList() {
   );
 
   const handleRemoveItem = useCallback(
-    (equipmentId) => {
-      updateItems((prev) => prev.filter((item) => item.id !== equipmentId));
+    (bomId) => {
+      updateItems((prev) => prev.filter((item) => item.bomId !== bomId));
     },
     [updateItems]
   );
@@ -331,70 +589,134 @@ export default function ProcurementList() {
   const handleExportExcel = useCallback(() => {
     if (items.length === 0) return;
 
-    const headers = [
-      'Mã/Nhóm',
-      'Tên thiết bị',
-      'Thông số kỹ thuật',
-      'Công suất (kW)',
-      'Hãng SX',
-      'ĐVT',
-      'Số lượng (Hoạt động/Dự phòng)',
-      'Ghi chú',
-    ];
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    let csvLines = [];
+    let filename = '';
 
-    const sortedItems = [...items].sort((a, b) => {
-      const catA = (a.category || 'Khác').trim() || 'Khác';
-      const catB = (b.category || 'Khác').trim() || 'Khác';
-      const catDiff = catA.localeCompare(catB, 'vi');
-      if (catDiff !== 0) return catDiff;
-      return (a.name || '').localeCompare(b.name || '', 'vi');
-    });
+    if (bomMode === 'detailed') {
+      const headers = [
+        'Hạng mục / Công trình',
+        'Mã/Nhóm',
+        'Tên thiết bị',
+        'Thông số kỹ thuật',
+        'Công suất (kW)',
+        'Hãng SX',
+        'ĐVT',
+        'Số lượng',
+        'Ghi chú',
+      ];
 
-    const rows = sortedItems.map((item) => [
-      `${item.id} - ${item.category}`,
-      item.name,
-      item.specs || '',
-      Number(item.power || 0).toFixed(2),
-      item.brand || '',
-      item.unit || 'Cái',
-      `${Number(item.quantity) || 0} / ${Number(item.standby) || 0}`,
-      item.note || '',
-    ]);
+      const sortedDetailed = [...items].sort((a, b) => {
+        const procA = normalizeUnitProcess(a.unitProcess);
+        const procB = normalizeUnitProcess(b.unitProcess);
+        const procDiff = procA.localeCompare(procB, 'vi');
+        if (procDiff !== 0) return procDiff;
+        const catDiff = (a.category || 'Khác').localeCompare(
+          b.category || 'Khác',
+          'vi'
+        );
+        if (catDiff !== 0) return catDiff;
+        return (a.name || '').localeCompare(b.name || '', 'vi');
+      });
 
-    const summaryRow = [
-      'TỔNG CỘNG',
-      `${items.length} chủng loại thiết bị`,
-      '',
-      totals.totalPowerKw.toFixed(2),
-      '',
-      '',
-      `${totals.totalUnits} / 0`,
-      `Tổng công suất: ${totals.totalPowerKw.toFixed(2)} kW`,
-    ];
+      const rows = sortedDetailed.map((item) => [
+        normalizeUnitProcess(item.unitProcess),
+        `${item.id} - ${item.category}`,
+        item.name,
+        item.specs || '',
+        Number(item.power || 0).toFixed(2),
+        item.brand || '',
+        item.unit || 'Cái',
+        Number(item.quantity) || 0,
+        item.note || '',
+      ]);
 
-    const csvLines = [headers, ...rows, summaryRow].map((line) =>
-      line.map(escapeCsvCell).join(',')
-    );
+      const summaryRow = [
+        'TỔNG CỘNG',
+        `${unitProcessOptions.length} hạng mục`,
+        `${items.length} dòng thiết bị`,
+        '',
+        totals.totalPowerKw.toFixed(2),
+        '',
+        '',
+        totals.totalUnits,
+        `Tổng công suất: ${totals.totalPowerKw.toFixed(2)} kW`,
+      ];
+
+      csvLines = [headers, ...rows, summaryRow].map((line) =>
+        line.map(escapeCsvCell).join(',')
+      );
+      filename = `omnieco-bom-chi-tiet-cong-trinh-${dateStamp}.csv`;
+    } else {
+      const headers = [
+        'Mã/Nhóm',
+        'Tên thiết bị',
+        'Thông số kỹ thuật',
+        'Công suất (kW)',
+        'Hãng SX',
+        'ĐVT',
+        'Số lượng',
+        'Ghi chú',
+      ];
+
+      const sortedConsolidated = [...consolidatedAllItems].sort((a, b) => {
+        const catA = (a.category || 'Khác').trim() || 'Khác';
+        const catB = (b.category || 'Khác').trim() || 'Khác';
+        const catDiff = catA.localeCompare(catB, 'vi');
+        if (catDiff !== 0) return catDiff;
+        return (a.name || '').localeCompare(b.name || '', 'vi');
+      });
+
+      const rows = sortedConsolidated.map((item) => [
+        `${item.id} - ${item.category}`,
+        item.name,
+        item.specs || '',
+        Number(item.power || 0).toFixed(2),
+        item.brand || '',
+        item.unit || 'Cái',
+        Number(item.quantity) || 0,
+        item.note || '',
+      ]);
+
+      const summaryRow = [
+        'TỔNG CỘNG',
+        `${consolidatedAllItems.length} chủng loại thiết bị tổng hợp`,
+        '',
+        totals.totalPowerKw.toFixed(2),
+        '',
+        '',
+        totals.totalUnits,
+        `Tổng công suất: ${totals.totalPowerKw.toFixed(2)} kW`,
+      ];
+
+      csvLines = [headers, ...rows, summaryRow].map((line) =>
+        line.map(escapeCsvCell).join(',')
+      );
+      filename = `omnieco-bom-tong-hop-mua-sam-${dateStamp}.csv`;
+    }
+
     const csvContent = `\uFEFF${csvLines.join('\r\n')}`;
-
     const blob = new Blob([csvContent], {
       type: 'text/csv;charset=utf-8;',
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `omnieco-danh-muc-mua-sam-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
+    link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [items, totals]);
+  }, [bomMode, items, consolidatedAllItems, totals, unitProcessOptions.length]);
 
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
+
+  const hasFilteredResults =
+    bomMode === 'detailed'
+      ? filteredDetailedItems.length > 0
+      : filteredConsolidatedItems.length > 0;
 
   return (
     <div className="space-y-6 pb-24 print:pb-0 print:bg-white print:text-black">
@@ -404,15 +726,15 @@ export default function ProcurementList() {
           <div className="space-y-1">
             <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 print:text-black">
               <ShoppingCart className="h-4 w-4 shrink-0" />
-              <span>Tổng hợp Vật tư & Thiết bị Dự án (BOM)</span>
+              <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-100 print:text-black">
               Danh mục Thiết bị Cần Mua sắm (BOM)
             </h1>
             <p className="text-sm text-slate-400 print:text-gray-700 max-w-2xl">
-              Lập bảng tổng hợp thiết bị cơ điện cần đặt mua cho toàn dự án từ Kho
-              Thiết bị chuẩn, theo dõi số lượng, tình trạng duyệt và tổng công suất
-              điện lắp đặt.
+              Quản lý chi tiết thiết bị theo từng hạng mục công trình hoặc xem
+              tổng hợp cộng dồn số lượng toàn dự án để đặt hàng và theo dõi công
+              suất điện lắp đặt.
             </p>
           </div>
 
@@ -443,13 +765,21 @@ export default function ProcurementList() {
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-700">
-            <span>Số mã thiết bị cần mua</span>
+            <span>
+              {bomMode === 'detailed'
+                ? 'Số dòng bóc tách theo công trình'
+                : 'Số chủng loại tổng hợp đặt mua'}
+            </span>
             <Package className="h-4 w-4 text-emerald-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-slate-100 tabular-nums print:text-black">
-            {items.length}{' '}
+            {bomMode === 'detailed'
+              ? items.length
+              : consolidatedAllItems.length}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
-              chủng loại
+              {bomMode === 'detailed'
+                ? `mục (${unitProcessOptions.length} hạng mục)`
+                : 'chủng loại'}
             </span>
           </div>
         </div>
@@ -481,8 +811,56 @@ export default function ProcurementList() {
         </div>
       </section>
 
-      {/* Search, Filter & View Toggle Bar */}
-      <section className="print:hidden rounded-xl bg-slate-800 border border-slate-700/80 p-4 space-y-3">
+      {/* BOM Mode Tabs + Search, Filter & View Toggle Bar */}
+      <section className="print:hidden rounded-xl bg-slate-800 border border-slate-700/80 p-4 space-y-3.5">
+        {/* BOM Mode Toggle Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-700/70">
+          <div
+            role="tablist"
+            aria-label="Chế độ hiển thị BOM"
+            className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-900 border border-slate-700 p-1 w-full sm:w-auto"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bomMode === 'detailed'}
+              onClick={() => setBomMode('detailed')}
+              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                bomMode === 'detailed'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Building2 className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">
+                Chi tiết theo công trình
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bomMode === 'consolidated'}
+              onClick={() => setBomMode('consolidated')}
+              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                bomMode === 'consolidated'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <PackageCheck className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">Tổng hợp mua sắm</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-400">
+            {bomMode === 'detailed'
+              ? 'Gom nhóm theo từng Hạng mục / Công trình (cho phép thêm, sửa, xóa độc lập).'
+              : 'Chế độ tổng hợp (Chỉ đọc): Tự động cộng dồn số lượng thiết bị trùng mã theo Nhóm vật tư.'}
+          </p>
+        </div>
+
+        {/* Search, Category Filter, Table/Grid Toggle & Export Excel */}
         <div className="flex flex-col md:flex-row gap-3">
           <div className="relative w-full flex-1">
             <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -490,7 +868,7 @@ export default function ProcurementList() {
               type="text"
               value={listSearch}
               onChange={(e) => setListSearch(e.target.value)}
-              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; dn80)..."
+              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; bể điều hòa)..."
               aria-label="Tìm kiếm trong danh mục mua sắm"
               className="w-full min-h-[44px] pl-10 pr-10 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
             />
@@ -562,7 +940,11 @@ export default function ProcurementList() {
             type="button"
             onClick={handleExportExcel}
             disabled={items.length === 0}
-            title="Xuất danh mục mua sắm ra file CSV mở bằng Excel (UTF-8)"
+            title={
+              bomMode === 'detailed'
+                ? 'Xuất Excel chi tiết theo từng hạng mục công trình (CSV UTF-8)'
+                : 'Xuất Excel tổng hợp cộng dồn theo nhóm vật tư (CSV UTF-8)'
+            }
             className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-500/50 text-sm font-semibold text-emerald-300 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
           >
             <FileSpreadsheet className="h-4 w-4 pointer-events-none shrink-0" />
@@ -571,7 +953,16 @@ export default function ProcurementList() {
         </div>
       </section>
 
-      {/* Procurement BOM List Grouped by Category (Table or Grid) */}
+      {/* Print Mode Subtitle */}
+      {items.length > 0 && (
+        <div className="hidden print:block text-sm font-semibold text-black border-b border-gray-300 pb-2">
+          {bomMode === 'detailed'
+            ? 'Chế độ: Chi tiết bóc tách theo từng Hạng mục / Công trình'
+            : 'Chế độ: Tổng hợp mua sắm toàn dự án (Đã cộng dồn theo mã thiết bị)'}
+        </div>
+      )}
+
+      {/* Procurement BOM List (Detailed by UnitProcess OR Consolidated by Category) */}
       <section className="space-y-5 pb-24 print:pb-0 print:bg-white print:text-black">
         {items.length === 0 ? (
           <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-3 print:bg-white print:border-gray-300 print:text-black">
@@ -584,8 +975,8 @@ export default function ProcurementList() {
               <strong className="text-slate-200 print:text-black">
                 &ldquo;Thêm thiết bị&rdquo;
               </strong>{' '}
-              để chọn máy móc từ Kho Thiết bị Cơ điện, nhập số lượng cần đặt và ghi
-              chú tiến độ mua sắm.
+              để chọn máy móc từ Kho Thiết bị Cơ điện, gắn cho từng Hạng mục /
+              Công trình và nhập số lượng cần đặt.
             </p>
             <div className="print:hidden pt-1">
               <button
@@ -594,27 +985,29 @@ export default function ProcurementList() {
                 className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors"
               >
                 <Plus className="h-4 w-4 pointer-events-none shrink-0" />
-                <span className="pointer-events-none">Thêm thiết bị đầu tiên</span>
+                <span className="pointer-events-none">
+                  Thêm thiết bị đầu tiên
+                </span>
               </button>
             </div>
           </div>
-        ) : filteredItems.length === 0 ? (
+        ) : !hasFilteredResults ? (
           <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-2 text-sm text-slate-400 print:bg-white print:border-gray-300 print:text-black">
-            Không tìm thấy thiết bị nào trong danh mục mua sắm khớp với bộ lọc hiện
-            tại.
+            Không tìm thấy thiết bị nào trong danh mục mua sắm khớp với bộ lọc
+            hiện tại.
           </div>
-        ) : (
+        ) : bomMode === 'detailed' ? (
           <>
-            {groupedItems.map((group) => (
+            {detailedGroupedByProcess.map((group) => (
               <div
-                key={group.category}
+                key={group.unitProcess}
                 className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
               >
-                {/* Category Group Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/90 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
+                {/* Unit Process Header */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
                   <h3 className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-2 print:text-black">
-                    <Layers className="h-4 w-4 shrink-0 text-emerald-400 print:text-black" />
-                    <span>{group.category}</span>
+                    <Building2 className="h-4 w-4 shrink-0 text-emerald-400 print:text-black" />
+                    <span>{group.unitProcess}</span>
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black">
                       {group.items.length} vật tư
                     </span>
@@ -653,7 +1046,7 @@ export default function ProcurementList() {
                             P đơn vị (kW)
                           </th>
                           <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
-                            SL Cần mua
+                            Số lượng
                           </th>
                           <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
                             Tổng P (kW)
@@ -662,7 +1055,7 @@ export default function ProcurementList() {
                             Ghi chú mua sắm
                           </th>
                           <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
-                            Xóa
+                            Thao tác
                           </th>
                         </tr>
                       </thead>
@@ -673,7 +1066,7 @@ export default function ProcurementList() {
                             (Number(item.power) || 0);
                           return (
                             <tr
-                              key={item.id}
+                              key={item.bomId}
                               className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
                             >
                               <td className="py-3 px-4 align-top whitespace-nowrap">
@@ -707,11 +1100,11 @@ export default function ProcurementList() {
                                   <input
                                     type="text"
                                     inputMode="numeric"
-                                    aria-label={`Số lượng cần mua ${item.name}`}
+                                    aria-label={`Số lượng cần mua ${item.name} (${item.unitProcess})`}
                                     value={String(item.quantity ?? 0)}
                                     onChange={(e) =>
                                       handleQuantityChange(
-                                        item.id,
+                                        item.bomId,
                                         e.target.value
                                       )
                                     }
@@ -735,10 +1128,10 @@ export default function ProcurementList() {
                                   type="text"
                                   value={item.note}
                                   onChange={(e) =>
-                                    handleNoteChange(item.id, e.target.value)
+                                    handleNoteChange(item.bomId, e.target.value)
                                   }
                                   placeholder="VD: Mua gấp, Chờ duyệt..."
-                                  aria-label={`Ghi chú mua sắm ${item.name}`}
+                                  aria-label={`Ghi chú mua sắm ${item.name} (${item.unitProcess})`}
                                   className="print:hidden w-full rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
                                 />
                                 <span className="hidden print:inline text-xs text-black">
@@ -747,14 +1140,26 @@ export default function ProcurementList() {
                               </td>
 
                               <td className="print:hidden py-3 px-4 align-middle text-right whitespace-nowrap overflow-visible">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveItem(item.id)}
-                                  aria-label={`Xóa ${item.name}`}
-                                  className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
-                                >
-                                  <Trash2 className="h-4 w-4 pointer-events-none" />
-                                </button>
+                                <div className="inline-flex items-center justify-end gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(item)}
+                                    aria-label={`Sửa ${item.name}`}
+                                    title="Chỉnh sửa hạng mục / số lượng / thiết bị"
+                                    className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 hover:border-sky-500/50 text-sky-400 transition-colors"
+                                  >
+                                    <Edit3 className="h-4 w-4 pointer-events-none" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(item.bomId)}
+                                    aria-label={`Xóa ${item.name}`}
+                                    title="Xóa khỏi danh mục"
+                                    className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="h-4 w-4 pointer-events-none" />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           );
@@ -771,7 +1176,7 @@ export default function ProcurementList() {
                           (Number(item.power) || 0);
                         return (
                           <article
-                            key={item.id}
+                            key={item.bomId}
                             className="rounded-xl bg-slate-900/80 border border-slate-700/80 shadow-lg p-4 flex flex-col justify-between gap-3.5 hover:border-emerald-500/40 transition-colors print:bg-white print:border-gray-300 print:shadow-none print:text-black print:break-inside-avoid"
                           >
                             <div className="space-y-2.5">
@@ -790,19 +1195,43 @@ export default function ProcurementList() {
                                   </h4>
                                 </div>
 
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveItem(item.id)}
-                                  aria-label={`Xóa ${item.name}`}
-                                  title="Xóa khỏi danh mục mua sắm"
-                                  className="print:hidden relative z-20 cursor-pointer select-none shrink-0 inline-flex items-center gap-1 min-h-[32px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-xs font-medium text-red-400 transition-colors"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
-                                  <span className="pointer-events-none">Xóa</span>
-                                </button>
+                                <div className="print:hidden flex items-center gap-1 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditModal(item)}
+                                    aria-label={`Sửa ${item.name}`}
+                                    title="Chỉnh sửa thiết bị trong BOM"
+                                    className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1 min-h-[32px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 hover:border-sky-500/50 text-xs font-medium text-sky-400 transition-colors"
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                                    <span className="pointer-events-none">
+                                      Sửa
+                                    </span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveItem(item.bomId)}
+                                    aria-label={`Xóa ${item.name}`}
+                                    title="Xóa khỏi danh mục mua sắm"
+                                    className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1 min-h-[32px] px-2 py-1 rounded-lg bg-slate-800 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-xs font-medium text-red-400 transition-colors"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 pointer-events-none shrink-0" />
+                                    <span className="pointer-events-none">
+                                      Xóa
+                                    </span>
+                                  </button>
+                                </div>
                               </div>
 
                               <div className="space-y-1 text-xs text-slate-400 print:text-gray-800">
+                                <div>
+                                  <span className="text-slate-500 print:text-gray-600">
+                                    Hạng mục:{' '}
+                                  </span>
+                                  <span className="text-emerald-300 font-medium print:text-black">
+                                    {item.unitProcess}
+                                  </span>
+                                </div>
                                 <div>
                                   <span className="text-slate-500 print:text-gray-600">
                                     Hãng SX:{' '}
@@ -839,20 +1268,20 @@ export default function ProcurementList() {
                               <div className="grid grid-cols-3 gap-2.5 items-end">
                                 <div>
                                   <label
-                                    htmlFor={`bom-qty-${item.id}`}
+                                    htmlFor={`bom-qty-${item.bomId}`}
                                     className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
                                   >
-                                    SL Cần mua
+                                    Số lượng
                                   </label>
                                   <input
-                                    id={`bom-qty-${item.id}`}
+                                    id={`bom-qty-${item.bomId}`}
                                     type="text"
                                     inputMode="numeric"
                                     aria-label={`Số lượng cần mua ${item.name}`}
                                     value={String(item.quantity ?? 0)}
                                     onChange={(e) =>
                                       handleQuantityChange(
-                                        item.id,
+                                        item.bomId,
                                         e.target.value
                                       )
                                     }
@@ -865,17 +1294,20 @@ export default function ProcurementList() {
 
                                 <div className="col-span-2">
                                   <label
-                                    htmlFor={`bom-note-${item.id}`}
+                                    htmlFor={`bom-note-${item.bomId}`}
                                     className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
                                   >
                                     Ghi chú mua sắm
                                   </label>
                                   <input
-                                    id={`bom-note-${item.id}`}
+                                    id={`bom-note-${item.bomId}`}
                                     type="text"
                                     value={item.note}
                                     onChange={(e) =>
-                                      handleNoteChange(item.id, e.target.value)
+                                      handleNoteChange(
+                                        item.bomId,
+                                        e.target.value
+                                      )
                                     }
                                     placeholder="VD: Mua gấp, Chờ duyệt..."
                                     className="print:hidden w-full rounded-md bg-slate-800 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
@@ -904,11 +1336,252 @@ export default function ProcurementList() {
               </div>
             ))}
 
-            {/* Grand Total Summary */}
+            {/* Grand Total Summary (Detailed) */}
             <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
               <span>
-                Tổng cộng toàn danh mục mua sắm ({groupedItems.length} nhóm ·{' '}
-                {items.length} chủng loại · {totals.totalUnits} thiết bị)
+                Tổng cộng chi tiết theo công trình (
+                {detailedGroupedByProcess.length} hạng mục ·{' '}
+                {filteredDetailedItems.length} dòng vật tư ·{' '}
+                {totals.totalUnits} thiết bị)
+              </span>
+              <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
+                {totals.totalPowerKw.toFixed(2)} kW
+              </span>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Consolidated Mode Grouped by Category (Read-only) */}
+            {consolidatedGroupedByCategory.map((group) => (
+              <div
+                key={group.category}
+                className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
+              >
+                {/* Category Header */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
+                  <h3 className="text-sm sm:text-base font-bold text-sky-400 flex items-center gap-2 print:text-black">
+                    <Layers className="h-4 w-4 shrink-0 text-sky-400 print:text-black" />
+                    <span>{group.category}</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30 print:bg-white print:border-gray-400 print:text-black">
+                      {group.items.length} chủng loại
+                    </span>
+                  </h3>
+
+                  <div className="flex items-center gap-3 text-xs text-slate-400 font-mono tabular-nums print:text-black">
+                    <span>
+                      Tổng SL:{' '}
+                      <strong className="text-slate-200 print:text-black">
+                        {group.groupUnits}
+                      </strong>
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      Tổng P:{' '}
+                      <strong className="text-amber-300 print:text-black">
+                        {group.groupPowerKw.toFixed(2)} kW
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+
+                {viewMode === 'table' ? (
+                  <div className="overflow-x-auto print:overflow-visible print:bg-white print:text-black">
+                    <table className="w-full text-left border-collapse text-sm print:text-black">
+                      <thead>
+                        <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
+                          <th className="py-3 px-4 font-semibold whitespace-nowrap">
+                            STT / Mã
+                          </th>
+                          <th className="py-3 px-4 font-semibold">
+                            Thiết bị, Thông số & Phân bổ
+                          </th>
+                          <th className="py-3 px-4 font-semibold">Hãng SX</th>
+                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                            P đơn vị (kW)
+                          </th>
+                          <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
+                            Số lượng
+                          </th>
+                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                            Tổng P (kW)
+                          </th>
+                          <th className="py-3 px-4 font-semibold min-w-[180px]">
+                            Ghi chú tổng hợp
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
+                        {group.items.map((item, idx) => {
+                          const rowPowerKw =
+                            (Number(item.quantity) || 0) *
+                            (Number(item.power) || 0);
+                          return (
+                            <tr
+                              key={item.consolidationKey}
+                              className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
+                            >
+                              <td className="py-3 px-4 align-top whitespace-nowrap">
+                                <div className="font-mono text-xs text-slate-400 print:text-black">
+                                  #{idx + 1} · {item.id}
+                                </div>
+                                <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-sky-400 print:bg-white print:border-gray-400 print:text-black">
+                                  {item.category}
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 align-top min-w-[230px]">
+                                <div className="font-semibold text-slate-100 print:text-black">
+                                  {item.name}
+                                </div>
+                                <div className="mt-0.5 text-xs text-slate-400 print:text-gray-700">
+                                  {item.specs || 'Chưa có mô tả thông số'}
+                                </div>
+                                {item.unitProcessSummary && (
+                                  <div className="mt-1 text-[11px] text-emerald-400/90 print:text-gray-700">
+                                    Phân bổ: {item.unitProcessSummary}
+                                  </div>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:text-black">
+                                {item.brand || '—'}
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black">
+                                {Number(item.power || 0).toFixed(2)}
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-center whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 font-mono text-sm font-bold text-emerald-400 tabular-nums print:bg-white print:border-gray-400 print:text-black">
+                                  {item.quantity}
+                                  <span className="text-xs font-sans font-normal text-slate-400 print:text-black">
+                                    {item.unit}
+                                  </span>
+                                </span>
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black">
+                                {rowPowerKw.toFixed(2)} kW
+                              </td>
+
+                              <td className="py-3 px-4 align-middle text-xs text-slate-300 print:text-black">
+                                {item.note || '—'}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 sm:p-5 print:p-3 print:bg-white print:text-black">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+                      {group.items.map((item, idx) => {
+                        const rowPowerKw =
+                          (Number(item.quantity) || 0) *
+                          (Number(item.power) || 0);
+                        return (
+                          <article
+                            key={item.consolidationKey}
+                            className="rounded-xl bg-slate-900/80 border border-slate-700/80 shadow-lg p-4 flex flex-col justify-between gap-3.5 print:bg-white print:border-gray-300 print:shadow-none print:text-black print:break-inside-avoid"
+                          >
+                            <div className="space-y-2.5">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 space-y-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
+                                      #{idx + 1} · {item.id}
+                                    </span>
+                                    <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-sky-400 print:bg-white print:border-gray-400 print:text-black">
+                                      {item.category}
+                                    </span>
+                                  </div>
+                                  <h4 className="text-sm font-semibold text-slate-100 leading-snug print:text-black">
+                                    {item.name}
+                                  </h4>
+                                </div>
+
+                                <span className="shrink-0 rounded-md bg-slate-800 border border-slate-700 px-2.5 py-1 font-mono text-sm font-bold text-emerald-400 tabular-nums print:bg-white print:border-gray-400 print:text-black">
+                                  {item.quantity} {item.unit}
+                                </span>
+                              </div>
+
+                              <div className="space-y-1 text-xs text-slate-400 print:text-gray-800">
+                                <div>
+                                  <span className="text-slate-500 print:text-gray-600">
+                                    Hãng SX:{' '}
+                                  </span>
+                                  <span className="text-slate-300 print:text-black">
+                                    {item.brand || '—'}
+                                  </span>
+                                </div>
+                                <div>
+                                  <span className="text-slate-500 print:text-gray-600">
+                                    Thông số:{' '}
+                                  </span>
+                                  <span className="print:text-black">
+                                    {item.specs || 'Chưa có mô tả thông số'}
+                                  </span>
+                                </div>
+                                {item.unitProcessSummary && (
+                                  <div className="text-[11px] text-emerald-400/90 print:text-gray-700">
+                                    <span className="text-slate-500 print:text-gray-600">
+                                      Phân bổ công trình:{' '}
+                                    </span>
+                                    {item.unitProcessSummary}
+                                  </div>
+                                )}
+                                <div className="flex items-center justify-between gap-2 pt-0.5">
+                                  <span>
+                                    <span className="text-slate-500 print:text-gray-600">
+                                      P đơn vị:{' '}
+                                    </span>
+                                    <span className="font-mono font-semibold text-slate-200 print:text-black">
+                                      {Number(item.power || 0).toFixed(2)} kW
+                                    </span>
+                                  </span>
+                                  <span className="font-mono text-[11px] text-slate-400 print:text-gray-700">
+                                    ĐVT: {item.unit || 'Cái'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="pt-3 border-t border-slate-800 space-y-2 print:border-gray-300">
+                              <div className="text-xs">
+                                <span className="text-slate-500 print:text-gray-700">
+                                  Ghi chú tổng hợp:{' '}
+                                </span>
+                                <span className="text-slate-300 print:text-black">
+                                  {item.note || '—'}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between text-xs">
+                                <span className="text-slate-400 print:text-gray-700">
+                                  Tổng công suất mục này:
+                                </span>
+                                <span className="font-mono text-sm font-bold text-amber-300 tabular-nums print:text-black">
+                                  {rowPowerKw.toFixed(2)} kW
+                                </span>
+                              </div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Grand Total Summary (Consolidated) */}
+            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
+              <span>
+                Tổng hợp toàn danh mục mua sắm (
+                {consolidatedGroupedByCategory.length} nhóm vật tư ·{' '}
+                {filteredConsolidatedItems.length} chủng loại ·{' '}
+                {totals.totalUnits} thiết bị)
               </span>
               <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
                 {totals.totalPowerKw.toFixed(2)} kW
@@ -918,7 +1591,7 @@ export default function ProcurementList() {
         )}
       </section>
 
-      {/* Modal Popup Chọn Thiết bị từ Master Database */}
+      {/* Modal Popup Thêm mới / Sửa Thiết bị trong BOM */}
       {isModalOpen && (
         <div
           role="dialog"
@@ -935,17 +1608,21 @@ export default function ProcurementList() {
                   className="text-base font-bold text-slate-100 flex items-center gap-2"
                 >
                   <Package className="h-5 w-5 text-emerald-400" />
-                  <span>Chọn Thiết bị vào Danh mục Mua sắm (BOM)</span>
+                  <span>
+                    {editingBomId
+                      ? 'Cập nhật Thiết bị trong Danh mục Mua sắm (BOM)'
+                      : 'Chọn Thiết bị vào Danh mục Mua sắm (BOM)'}
+                  </span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Dữ liệu lấy từ Kho Thiết bị chuẩn ({catalog.length} thiết bị sẵn
-                  có)
+                  Dữ liệu lấy từ Kho Thiết bị chuẩn ({catalog.length} thiết bị
+                  sẵn có)
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <Link
                   to="/kho-thiet-bi"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   className="relative z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-emerald-400 transition-colors"
                 >
                   <span className="pointer-events-none">Quản lý kho</span>
@@ -953,7 +1630,7 @@ export default function ProcurementList() {
                 </Link>
                 <button
                   type="button"
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeModal}
                   aria-label="Đóng cửa sổ"
                   className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
                 >
@@ -1196,7 +1873,9 @@ export default function ProcurementList() {
                               <Plus className="h-3.5 w-3.5 pointer-events-none shrink-0" />
                             )}
                             <span className="pointer-events-none">
-                              {isPicked ? 'Đã chọn thiết bị này' : 'Chọn thiết bị'}
+                              {isPicked
+                                ? 'Đã chọn thiết bị này'
+                                : 'Chọn thiết bị'}
                             </span>
                           </button>
                         </div>
@@ -1207,11 +1886,29 @@ export default function ProcurementList() {
               )}
             </div>
 
-            {/* Modal Footer: Quantity, Note & Submit */}
+            {/* Modal Footer: Unit Process, Quantity, Note & Submit */}
             <form
-              onSubmit={handleConfirmAdd}
-              className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/70 space-y-3 shrink-0"
+              onSubmit={handleSaveModal}
+              className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/80 space-y-3 shrink-0"
             >
+              {pickedEquipment && (
+                <div className="rounded-lg bg-emerald-950/35 border border-emerald-500/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0">
+                    <span className="text-slate-400">Thiết bị đang chọn: </span>
+                    <strong className="text-emerald-300">
+                      {pickedEquipment.name}
+                    </strong>{' '}
+                    <span className="font-mono text-slate-400">
+                      ({pickedEquipment.id})
+                    </span>
+                  </div>
+                  <span className="font-mono text-amber-300 font-semibold shrink-0">
+                    {Number(pickedEquipment.power || 0).toFixed(2)} kW /{' '}
+                    {pickedEquipment.unit || 'Cái'}
+                  </span>
+                </div>
+              )}
+
               {modalError && (
                 <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3 py-2 text-xs text-red-200">
                   {modalError}
@@ -1219,12 +1916,39 @@ export default function ProcurementList() {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-4">
+                  <label
+                    htmlFor="bom-modal-unit-process"
+                    className="block text-xs font-medium text-slate-300 mb-1"
+                  >
+                    Hạng mục / Công trình <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    id="bom-modal-unit-process"
+                    type="text"
+                    required
+                    list="unit-process-list"
+                    value={unitProcessInput}
+                    onChange={(e) => {
+                      setUnitProcessInput(e.target.value);
+                      if (modalError) setModalError('');
+                    }}
+                    placeholder="VD: Bể Điều hòa, Bể Aerotank..."
+                    className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <datalist id="unit-process-list">
+                    {unitProcessOptions.map((proc) => (
+                      <option key={proc} value={proc} />
+                    ))}
+                  </datalist>
+                </div>
+
+                <div className="sm:col-span-2">
                   <label
                     htmlFor="bom-modal-qty"
                     className="block text-xs font-medium text-slate-300 mb-1"
                   >
-                    Số lượng cần mua
+                    Số lượng <span className="text-red-400">*</span>
                   </label>
                   <input
                     id="bom-modal-qty"
@@ -1238,7 +1962,7 @@ export default function ProcurementList() {
                   />
                 </div>
 
-                <div className="sm:col-span-5">
+                <div className="sm:col-span-3">
                   <label
                     htmlFor="bom-modal-note"
                     className="block text-xs font-medium text-slate-300 mb-1"
@@ -1255,20 +1979,22 @@ export default function ProcurementList() {
                   />
                 </div>
 
-                <div className="sm:col-span-4 flex items-center justify-end gap-2">
+                <div className="sm:col-span-3 flex items-center justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
+                    onClick={closeModal}
+                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
                   >
                     <span className="pointer-events-none">Đóng</span>
                   </button>
                   <button
                     type="submit"
                     disabled={!pickedEquipment}
-                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold text-white"
+                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold text-white whitespace-nowrap"
                   >
-                    <span className="pointer-events-none">Thêm vào BOM</span>
+                    <span className="pointer-events-none">
+                      {editingBomId ? 'Lưu thay đổi' : 'Thêm vào BOM'}
+                    </span>
                   </button>
                 </div>
               </div>

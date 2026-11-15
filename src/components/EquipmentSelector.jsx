@@ -76,7 +76,6 @@ export default function EquipmentSelector({
   const [categoryFilter, setCategoryFilter] = useState('Tất cả');
   const [pickedEquipment, setPickedEquipment] = useState(null);
   const [quantityInput, setQuantityInput] = useState('1');
-  const [standbyInput, setStandbyInput] = useState('1');
   const [modalError, setModalError] = useState('');
 
   // Đồng bộ danh mục từ LocalStorage (khi tab khác hoặc DB Manager cập nhật)
@@ -130,19 +129,14 @@ export default function EquipmentSelector({
     return assignedList.reduce(
       (acc, item) => {
         const qty = Number(item.quantity) || 0;
-        const sb = Number(item.standby) || 0;
         const pw = Number(item.power) || 0;
-        acc.totalOperatingKw += qty * pw;
-        acc.totalInstalledKw += (qty + sb) * pw;
-        acc.totalOperatingUnits += qty;
-        acc.totalStandbyUnits += sb;
+        acc.totalPowerKw += qty * pw;
+        acc.totalUnits += qty;
         return acc;
       },
       {
-        totalOperatingKw: 0,
-        totalInstalledKw: 0,
-        totalOperatingUnits: 0,
-        totalStandbyUnits: 0,
+        totalPowerKw: 0,
+        totalUnits: 0,
       }
     );
   }, [assignedList]);
@@ -159,20 +153,13 @@ export default function EquipmentSelector({
           // Bỏ qua nếu bộ nhớ đầy
         }
       }
-      const nextTotalOperatingKw = nextList.reduce(
+      const nextTotalKw = nextList.reduce(
         (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.power) || 0),
         0
       );
-      const nextTotalInstalledKw = nextList.reduce(
-        (sum, item) =>
-          sum +
-          ((Number(item.quantity) || 0) + (Number(item.standby) || 0)) *
-            (Number(item.power) || 0),
-        0
-      );
       onChange?.(nextList, {
-        totalOperatingKw: nextTotalOperatingKw,
-        totalInstalledKw: nextTotalInstalledKw,
+        totalOperatingKw: nextTotalKw,
+        totalInstalledKw: nextTotalKw,
       });
     },
     [isControlled, storageKey, onChange]
@@ -184,7 +171,6 @@ export default function EquipmentSelector({
     setCategoryFilter('Tất cả');
     setPickedEquipment(null);
     setQuantityInput('1');
-    setStandbyInput('1');
     setModalError('');
     setIsModalOpen(true);
   }, [refreshCatalog]);
@@ -210,10 +196,9 @@ export default function EquipmentSelector({
         setModalError('Vui lòng chọn một thiết bị trong danh sách bên trên.');
         return;
       }
-      const qty = parseNonNegativeInt(quantityInput, -1);
-      const sb = parseNonNegativeInt(standbyInput, 0);
-      if (qty < 0 || (qty === 0 && sb === 0)) {
-        setModalError('Số lượng hoạt động và dự phòng không thể đồng thời bằng 0.');
+      const qty = parseNonNegativeInt(quantityInput, 0);
+      if (qty <= 0) {
+        setModalError('Số lượng cần mua phải lớn hơn 0.');
         return;
       }
 
@@ -233,8 +218,7 @@ export default function EquipmentSelector({
                 power: Number(pickedEquipment.power) || 0,
                 brand: pickedEquipment.brand,
                 unit: pickedEquipment.unit,
-                quantity: item.quantity + qty,
-                standby: item.standby + sb,
+                quantity: (Number(item.quantity) || 0) + qty,
               }
             : item
         );
@@ -250,7 +234,6 @@ export default function EquipmentSelector({
             brand: pickedEquipment.brand,
             unit: pickedEquipment.unit || 'Cái',
             quantity: qty,
-            standby: sb,
           },
         ];
       }
@@ -258,15 +241,15 @@ export default function EquipmentSelector({
       commitList(nextList);
       setIsModalOpen(false);
     },
-    [pickedEquipment, quantityInput, standbyInput, assignedList, commitList]
+    [pickedEquipment, quantityInput, assignedList, commitList]
   );
 
-  const handleInlineCountChange = useCallback(
-    (equipmentId, field, rawValue) => {
+  const handleQuantityChange = useCallback(
+    (equipmentId, rawValue) => {
       const sanitized = sanitizeIntInput(rawValue);
       const parsed = sanitized === '' ? 0 : parseNonNegativeInt(sanitized, 0);
       const nextList = assignedList.map((item) =>
-        item.id === equipmentId ? { ...item, [field]: parsed } : item
+        item.id === equipmentId ? { ...item, quantity: parsed } : item
       );
       commitList(nextList);
     },
@@ -298,7 +281,7 @@ export default function EquipmentSelector({
           </div>
           <p className="text-xs text-slate-400 mt-0.5 print:text-gray-600">
             Lấy trực tiếp từ Kho Thiết bị (LocalStorage). Tổng công suất điện = Σ
-            (SL hoạt động × Công suất đơn vị).
+            (Số lượng × Công suất đơn vị).
           </p>
         </div>
 
@@ -311,13 +294,8 @@ export default function EquipmentSelector({
                 Tổng công suất điện:{' '}
               </span>
               <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900">
-                {totals.totalOperatingKw.toFixed(2)} kW
+                {totals.totalPowerKw.toFixed(2)} kW
               </span>
-              {totals.totalInstalledKw > totals.totalOperatingKw && (
-                <span className="ml-1.5 text-[11px] text-slate-400 font-mono print:text-gray-600">
-                  (Lắp đặt: {totals.totalInstalledKw.toFixed(2)} kW)
-                </span>
-              )}
             </div>
           </div>
 
@@ -390,13 +368,10 @@ export default function EquipmentSelector({
                   Đơn giá P (kW)
                 </th>
                 <th className="py-2.5 px-3 font-semibold text-center whitespace-nowrap">
-                  SL Hoạt động
-                </th>
-                <th className="py-2.5 px-3 font-semibold text-center whitespace-nowrap">
-                  SL Dự phòng
+                  Số lượng
                 </th>
                 <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">
-                  Tổng P chạy (kW)
+                  Tổng P (kW)
                 </th>
                 <th className="print:hidden py-2.5 px-3 font-semibold text-right whitespace-nowrap">
                   Xóa
@@ -405,7 +380,7 @@ export default function EquipmentSelector({
             </thead>
             <tbody className="divide-y divide-slate-700/60 print:divide-gray-300">
               {assignedList.map((item) => {
-                const rowOperatingKw =
+                const rowPowerKw =
                   (Number(item.quantity) || 0) * (Number(item.power) || 0);
                 return (
                   <tr
@@ -433,47 +408,28 @@ export default function EquipmentSelector({
                     </td>
 
                     <td className="py-2.5 px-3 align-middle text-center whitespace-nowrap">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        aria-label={`Số lượng hoạt động ${item.name}`}
-                        value={String(item.quantity ?? 0)}
-                        onChange={(e) =>
-                          handleInlineCountChange(
-                            item.id,
-                            'quantity',
-                            e.target.value
-                          )
-                        }
-                        className="print:hidden w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                      />
+                      <div className="print:hidden inline-flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          aria-label={`Số lượng ${item.name}`}
+                          value={String(item.quantity ?? 0)}
+                          onChange={(e) =>
+                            handleQuantityChange(item.id, e.target.value)
+                          }
+                          className="w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                        />
+                        <span className="text-xs text-slate-400">
+                          {item.unit || 'Cái'}
+                        </span>
+                      </div>
                       <span className="hidden print:inline font-mono">
-                        {item.quantity} {item.unit}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3 align-middle text-center whitespace-nowrap">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        aria-label={`Số lượng dự phòng ${item.name}`}
-                        value={String(item.standby ?? 0)}
-                        onChange={(e) =>
-                          handleInlineCountChange(
-                            item.id,
-                            'standby',
-                            e.target.value
-                          )
-                        }
-                        className="print:hidden w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
-                      />
-                      <span className="hidden print:inline font-mono">
-                        {item.standby} {item.unit}
+                        {item.quantity} {item.unit || 'Cái'}
                       </span>
                     </td>
 
                     <td className="py-2.5 px-3 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900">
-                      {rowOperatingKw.toFixed(2)} kW
+                      {rowPowerKw.toFixed(2)} kW
                     </td>
 
                     <td className="print:hidden py-2.5 px-3 align-middle text-right whitespace-nowrap overflow-visible">
@@ -494,17 +450,13 @@ export default function EquipmentSelector({
               <tr className="bg-slate-900/70 border-t border-slate-700 text-xs font-semibold print:bg-gray-100 print:border-gray-300">
                 <td className="py-2.5 px-3 text-slate-300 print:text-gray-800" colSpan={2}>
                   Tổng cộng ({assignedList.length} loại thiết bị ·{' '}
-                  {totals.totalOperatingUnits} chạy + {totals.totalStandbyUnits} dự
-                  phòng)
+                  {totals.totalUnits} thiết bị)
                 </td>
                 <td className="py-2.5 px-3 text-center font-mono text-emerald-400 print:text-gray-900">
-                  {totals.totalOperatingUnits}
-                </td>
-                <td className="py-2.5 px-3 text-center font-mono text-slate-300 print:text-gray-700">
-                  {totals.totalStandbyUnits}
+                  {totals.totalUnits}
                 </td>
                 <td className="py-2.5 px-3 text-right font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900">
-                  {totals.totalOperatingKw.toFixed(2)} kW
+                  {totals.totalPowerKw.toFixed(2)} kW
                 </td>
                 <td className="print:hidden" />
               </tr>
@@ -515,7 +467,7 @@ export default function EquipmentSelector({
         <div className="space-y-4 pb-20 print:pb-0">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
             {assignedList.map((item) => {
-              const rowOperatingKw =
+              const rowPowerKw =
                 (Number(item.quantity) || 0) * (Number(item.power) || 0);
               return (
                 <article
@@ -582,68 +534,40 @@ export default function EquipmentSelector({
                   </div>
 
                   <div className="pt-3 border-t border-slate-800 space-y-2.5 print:border-gray-300">
-                    <div className="grid grid-cols-2 gap-2.5">
-                      <div>
-                        <label
-                          htmlFor={`assigned-qty-${item.id}`}
-                          className="block text-[11px] text-slate-400 mb-1 print:text-gray-600"
-                        >
-                          Hoạt động
-                        </label>
+                    <div className="flex items-center justify-between gap-3">
+                      <label
+                        htmlFor={`assigned-qty-${item.id}`}
+                        className="text-xs text-slate-400 print:text-gray-600"
+                      >
+                        Số lượng
+                      </label>
+                      <div className="print:hidden inline-flex items-center gap-1.5">
                         <input
                           id={`assigned-qty-${item.id}`}
                           type="text"
                           inputMode="numeric"
-                          aria-label={`Số lượng hoạt động ${item.name}`}
+                          aria-label={`Số lượng ${item.name}`}
                           value={String(item.quantity ?? 0)}
                           onChange={(e) =>
-                            handleInlineCountChange(
-                              item.id,
-                              'quantity',
-                              e.target.value
-                            )
+                            handleQuantityChange(item.id, e.target.value)
                           }
-                          className="print:hidden w-full text-center rounded-md bg-slate-800 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                          className="w-20 text-center rounded-md bg-slate-800 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
                         />
-                        <span className="hidden print:inline font-mono text-sm font-semibold">
-                          {item.quantity} {item.unit}
+                        <span className="text-xs text-slate-400">
+                          {item.unit || 'Cái'}
                         </span>
                       </div>
-
-                      <div>
-                        <label
-                          htmlFor={`assigned-sb-${item.id}`}
-                          className="block text-[11px] text-slate-400 mb-1 print:text-gray-600"
-                        >
-                          Dự phòng
-                        </label>
-                        <input
-                          id={`assigned-sb-${item.id}`}
-                          type="text"
-                          inputMode="numeric"
-                          aria-label={`Số lượng dự phòng ${item.name}`}
-                          value={String(item.standby ?? 0)}
-                          onChange={(e) =>
-                            handleInlineCountChange(
-                              item.id,
-                              'standby',
-                              e.target.value
-                            )
-                          }
-                          className="print:hidden w-full text-center rounded-md bg-slate-800 border border-slate-700 px-2 py-1 text-sm font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
-                        />
-                        <span className="hidden print:inline font-mono text-sm">
-                          {item.standby} {item.unit}
-                        </span>
-                      </div>
+                      <span className="hidden print:inline font-mono text-sm font-semibold">
+                        {item.quantity} {item.unit || 'Cái'}
+                      </span>
                     </div>
 
                     <div className="flex items-center justify-between text-xs pt-1">
                       <span className="text-slate-400 print:text-gray-600">
-                        Tổng P chạy:
+                        Tổng công suất:
                       </span>
                       <span className="font-mono text-sm font-bold text-amber-300 tabular-nums print:text-gray-900">
-                        {rowOperatingKw.toFixed(2)} kW
+                        {rowPowerKw.toFixed(2)} kW
                       </span>
                     </div>
                   </div>
@@ -655,11 +579,10 @@ export default function EquipmentSelector({
           <div className="rounded-lg bg-slate-900/70 border border-slate-700 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300">
             <span className="text-slate-300 print:text-gray-800">
               Tổng cộng ({assignedList.length} loại thiết bị ·{' '}
-              {totals.totalOperatingUnits} chạy + {totals.totalStandbyUnits} dự
-              phòng)
+              {totals.totalUnits} thiết bị)
             </span>
             <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900">
-              {totals.totalOperatingKw.toFixed(2)} kW
+              {totals.totalPowerKw.toFixed(2)} kW
             </span>
           </div>
         </div>
@@ -952,7 +875,7 @@ export default function EquipmentSelector({
               )}
             </div>
 
-            {/* Footer: Quantity / Standby Input + Submit */}
+            {/* Footer: Quantity Input + Submit */}
             <form
               onSubmit={handleConfirmAddEquipment}
               className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/60 space-y-3 shrink-0"
@@ -964,43 +887,23 @@ export default function EquipmentSelector({
               )}
 
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-                <div className="grid grid-cols-2 gap-3 sm:w-80">
-                  <div>
-                    <label
-                      htmlFor="sel-qty"
-                      className="block text-xs font-medium text-slate-300 mb-1"
-                    >
-                      SL hoạt động (Chạy)
-                    </label>
-                    <input
-                      id="sel-qty"
-                      type="text"
-                      inputMode="numeric"
-                      value={quantityInput}
-                      onChange={(e) =>
-                        setQuantityInput(sanitizeIntInput(e.target.value))
-                      }
-                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="sel-standby"
-                      className="block text-xs font-medium text-slate-300 mb-1"
-                    >
-                      SL dự phòng (Standby)
-                    </label>
-                    <input
-                      id="sel-standby"
-                      type="text"
-                      inputMode="numeric"
-                      value={standbyInput}
-                      onChange={(e) =>
-                        setStandbyInput(sanitizeIntInput(e.target.value))
-                      }
-                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-emerald-500"
-                    />
-                  </div>
+                <div className="sm:w-48">
+                  <label
+                    htmlFor="sel-qty"
+                    className="block text-xs font-medium text-slate-300 mb-1"
+                  >
+                    Số lượng cần mua
+                  </label>
+                  <input
+                    id="sel-qty"
+                    type="text"
+                    inputMode="numeric"
+                    value={quantityInput}
+                    onChange={(e) =>
+                      setQuantityInput(sanitizeIntInput(e.target.value))
+                    }
+                    className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                  />
                 </div>
 
                 <div className="flex items-center justify-between sm:justify-end gap-3">
