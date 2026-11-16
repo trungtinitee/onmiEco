@@ -3,17 +3,18 @@ import { Link } from 'react-router-dom';
 import { Menu } from 'lucide-react';
 import { LOGO_BASE64 } from '../constants/branding';
 import { useAppContext } from '../context/AppContext';
+import ProjectSelector from './ProjectSelector';
 
 const HeaderFlowBadge = memo(function HeaderFlowBadge() {
   const { globalQ } = useAppContext();
 
   return (
-    <div className="font-mono text-xs text-slate-400 tabular-nums shrink-0">
+    <div className="font-mono text-[11px] sm:text-xs text-slate-400 tabular-nums shrink-0 whitespace-nowrap">
       Q ={' '}
       <span className="font-semibold text-emerald-400">
         {Number(globalQ || 0).toLocaleString('vi-VN')}
       </span>{' '}
-      m³/ng
+      <span className="hidden xs:inline sm:inline">m³/ng</span>
     </div>
   );
 });
@@ -45,7 +46,7 @@ const Header = memo(function Header({
           <img
             src={LOGO_BASE64}
             alt="omniEco Logo"
-            className="h-7 sm:h-8 w-auto object-contain"
+            className="h-6 sm:h-8 w-auto object-contain"
           />
         </Link>
 
@@ -68,7 +69,10 @@ const Header = memo(function Header({
         </div>
       </div>
 
-      <HeaderFlowBadge />
+      <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <ProjectSelector />
+        <HeaderFlowBadge />
+      </div>
     </header>
   );
 });

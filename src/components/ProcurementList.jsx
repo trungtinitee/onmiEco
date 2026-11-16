@@ -26,8 +26,10 @@ import {
   loadEquipmentsFromStorage,
   matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
+import { useAppContext } from '../context/AppContext';
 
-export const PROCUREMENT_STORAGE_KEY = 'omnieco_project_procurement';
+export const getProcurementStorageKey = (projectId) =>
+  `omniEco_BOM_${projectId || 'default-project'}`;
 
 const DEFAULT_UNIT_PROCESS = 'Hạng mục chung';
 const QUICK_NOTES = ['Mua gấp', 'Chờ duyệt', 'Đang hỏi giá', 'Đã đặt hàng'];
@@ -64,10 +66,10 @@ function getConsolidationKey(item) {
   return (rawCode || rawId).toLowerCase();
 }
 
-function loadProcurementFromStorage() {
-  if (typeof window === 'undefined') return [];
+function loadProcurementFromStorage(storageKey) {
+  if (typeof window === 'undefined' || !storageKey) return [];
   try {
-    const raw = window.localStorage.getItem(PROCUREMENT_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -92,17 +94,22 @@ function loadProcurementFromStorage() {
   }
 }
 
-function saveProcurementToStorage(list) {
-  if (typeof window === 'undefined') return;
+function saveProcurementToStorage(storageKey, list) {
+  if (typeof window === 'undefined' || !storageKey) return;
   try {
-    window.localStorage.setItem(PROCUREMENT_STORAGE_KEY, JSON.stringify(list));
+    window.localStorage.setItem(storageKey, JSON.stringify(list));
   } catch {
     // Bỏ qua nếu bộ nhớ trình duyệt đầy
   }
 }
 
 export default function ProcurementList() {
-  const [items, setItems] = useState(() => loadProcurementFromStorage());
+  const { currentProject } = useAppContext();
+  const bomStorageKey = getProcurementStorageKey(currentProject?.id);
+
+  const [items, setItems] = useState(() =>
+    loadProcurementFromStorage(bomStorageKey)
+  );
   const [catalog, setCatalog] = useState(() => loadEquipmentsFromStorage());
 
   // Chế độ hiển thị BOM: 'detailed' (Chi tiết theo công trình - Mặc định) | 'consolidated' (Tổng hợp mua sắm)
@@ -127,6 +134,15 @@ export default function ProcurementList() {
   const [quantityInput, setQuantityInput] = useState('1');
   const [noteInput, setNoteInput] = useState('');
   const [modalError, setModalError] = useState('');
+
+  // Tự động load lại dữ liệu BOM khi chuyển đổi dự án
+  useEffect(() => {
+    setItems(loadProcurementFromStorage(bomStorageKey));
+    setIsModalOpen(false);
+    setEditingBomId(null);
+    setListSearch('');
+    setListCategory('Tất cả');
+  }, [bomStorageKey]);
 
   const isMobileRef = useRef(
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -155,8 +171,8 @@ export default function ProcurementList() {
     const onStorage = (e) => {
       if (e.key === EQUIPMENT_STORAGE_KEY) {
         refreshCatalog();
-      } else if (e.key === PROCUREMENT_STORAGE_KEY) {
-        setItems(loadProcurementFromStorage());
+      } else if (e.key === bomStorageKey) {
+        setItems(loadProcurementFromStorage(bomStorageKey));
       }
     };
     const onCustomUpdate = () => refreshCatalog();
@@ -167,7 +183,7 @@ export default function ProcurementList() {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(EQUIPMENT_UPDATED_EVENT, onCustomUpdate);
     };
-  }, [refreshCatalog]);
+  }, [refreshCatalog, bomStorageKey]);
 
   // Đóng modal bằng phím Escape
   useEffect(() => {
@@ -182,13 +198,16 @@ export default function ProcurementList() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isModalOpen]);
 
-  const updateItems = useCallback((updater) => {
-    setItems((prev) => {
-      const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveProcurementToStorage(next);
-      return next;
-    });
-  }, []);
+  const updateItems = useCallback(
+    (updater) => {
+      setItems((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        saveProcurementToStorage(bomStorageKey, next);
+        return next;
+      });
+    },
+    [bomStorageKey]
+  );
 
   // Danh sách gợi ý Hạng mục / Công trình đã có trong BOM
   const unitProcessOptions = useMemo(() => {
@@ -724,17 +743,22 @@ export default function ProcurementList() {
       <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 print:text-black">
-              <ShoppingCart className="h-4 w-4 shrink-0" />
-              <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 print:text-black">
+                <ShoppingCart className="h-4 w-4 shrink-0" />
+                <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
+              </div>
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black">
+                Dự án: {currentProject?.name}
+              </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-100 print:text-black">
               Danh mục Thiết bị Cần Mua sắm (BOM)
             </h1>
             <p className="text-sm text-slate-400 print:text-gray-700 max-w-2xl">
               Quản lý chi tiết thiết bị theo từng hạng mục công trình hoặc xem
-              tổng hợp cộng dồn số lượng toàn dự án để đặt hàng và theo dõi công
-              suất điện lắp đặt.
+              tổng hợp cộng dồn số lượng cho dự án hiện tại để đặt hàng và theo
+              dõi công suất điện lắp đặt.
             </p>
           </div>
 

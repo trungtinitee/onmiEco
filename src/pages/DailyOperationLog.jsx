@@ -23,7 +23,8 @@ import {
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
 
-const STORAGE_KEY = 'dvn_operation_logs';
+const getLogStorageKey = (projectId) =>
+  `omniEco_Logs_${projectId || 'default-project'}`;
 const GSHEET_URL_KEY = 'dvn_gsheet_url';
 
 const APPS_SCRIPT_CODE = `function doPost(e) {
@@ -141,8 +142,32 @@ function createLogId() {
   return `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function loadLogsFromStorage(storageKey) {
+  if (typeof window === 'undefined' || !storageKey) return [];
+  try {
+    const saved = window.localStorage.getItem(storageKey);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => ({
+      ...item,
+      pac: normalizeChemicalField(item.pac, 'kg'),
+      disinfectant: normalizeChemicalField(
+        item.disinfectant ?? item.javen,
+        'Lít'
+      ),
+      molasses: normalizeChemicalField(item.molasses, 'kg'),
+      alkalinity: normalizeChemicalField(item.alkalinity, 'kg'),
+      isSynced: Boolean(item.isSynced),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export default function DailyOperationLog() {
-  const { globalQ } = useAppContext();
+  const { globalQ, currentProject } = useAppContext();
+  const logStorageKey = getLogStorageKey(currentProject?.id);
 
   // --- Cấu hình URL Google Sheets động ---
   const [gsheetUrlInput, setGsheetUrlInput] = useState(() => {
@@ -167,28 +192,28 @@ export default function DailyOperationLog() {
     }
   });
 
-  // --- Dữ liệu Nhật ký trong localStorage ---
-  const [logs, setLogs] = useState(() => {
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      if (!Array.isArray(parsed)) return [];
-      return parsed.map((item) => ({
-        ...item,
-        pac: normalizeChemicalField(item.pac, 'kg'),
-        disinfectant: normalizeChemicalField(
-          item.disinfectant ?? item.javen,
-          'Lít'
-        ),
-        molasses: normalizeChemicalField(item.molasses, 'kg'),
-        alkalinity: normalizeChemicalField(item.alkalinity, 'kg'),
-        isSynced: Boolean(item.isSynced),
-      }));
-    } catch {
-      return [];
-    }
-  });
+  // --- Dữ liệu Nhật ký trong localStorage gắn theo Dự án hiện tại ---
+  const [logsState, setLogsState] = useState(() => ({
+    key: logStorageKey,
+    items: loadLogsFromStorage(logStorageKey),
+  }));
+
+  const logs = logsState.key === logStorageKey ? logsState.items : [];
+
+  const setLogs = (updater) => {
+    setLogsState((prev) => {
+      const currentItems =
+        prev.key === logStorageKey
+          ? prev.items
+          : loadLogsFromStorage(logStorageKey);
+      const nextItems =
+        typeof updater === 'function' ? updater(currentItems) : updater;
+      return {
+        key: logStorageKey,
+        items: nextItems,
+      };
+    });
+  };
 
   const [form, setForm] = useState(() => createDefaultForm(globalQ));
   const [flowTouched, setFlowTouched] = useState(false);
@@ -199,6 +224,17 @@ export default function DailyOperationLog() {
   const [guideOpen, setGuideOpen] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [viewMode, setViewMode] = useState('table');
+
+  // Tự động tải lại nhật ký của dự án mới khi đổi dự án
+  useEffect(() => {
+    setLogsState({
+      key: logStorageKey,
+      items: loadLogsFromStorage(logStorageKey),
+    });
+    setEditingId(null);
+    setFlowTouched(false);
+    setForm(createDefaultForm(globalQ));
+  }, [logStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Đóng Modal hướng dẫn bằng phím Escape
   useEffect(() => {
@@ -212,14 +248,15 @@ export default function DailyOperationLog() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [guideOpen]);
 
-  // Persist logs to localStorage whenever logs change
+  // Chỉ ghi localStorage khi logsState.key khớp đúng logStorageKey hiện hành (tránh ghi đè chéo dự án)
   useEffect(() => {
+    if (logsState.key !== logStorageKey) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+      window.localStorage.setItem(logStorageKey, JSON.stringify(logsState.items));
     } catch {
       // Ignore storage quota errors safely
     }
-  }, [logs]);
+  }, [logsState, logStorageKey]);
 
   // Keep flowQ synced with globalQ suggestion when not editing & user hasn't manually changed it
   useEffect(() => {
@@ -694,7 +731,10 @@ export default function DailyOperationLog() {
           NHẬT KÝ VẬN HÀNH TRẠM XỬ LÝ NƯỚC THẢI
         </h1>
         <div className="mt-1.5 flex items-center justify-between text-xs text-black">
-          <span>Tổng số ca ghi nhận: {sortedLogs.length} ca</span>
+          <span>
+            Dự án: <strong>{currentProject?.name}</strong> · Tổng số ca ghi nhận:{' '}
+            {sortedLogs.length} ca
+          </span>
           <span>
             Ngày in: {new Date().toLocaleDateString('vi-VN')} · Lưu lượng thiết
             kế Q = {Number(globalQ || 0).toLocaleString('vi-VN')} m³/ngày
@@ -783,9 +823,14 @@ export default function DailyOperationLog() {
       {/* Header trên màn hình (Ẩn khi in) */}
       <section className="no-print print:hidden flex flex-col lg:flex-row lg:items-end justify-between gap-4">
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-2 text-xs font-medium text-emerald-500">
-            <BookOpenCheck className="h-4 w-4" />
-            <span>Quản lý & Lưu trữ Nhật ký Trạm</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 text-xs font-medium text-emerald-500">
+              <BookOpenCheck className="h-4 w-4" />
+              <span>Quản lý & Lưu trữ Nhật ký Trạm</span>
+            </div>
+            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+              Dự án: {currentProject?.name}
+            </span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-100 text-balance">
             Nhật Ký Vận Hành Hằng Ngày
