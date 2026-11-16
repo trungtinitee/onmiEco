@@ -19,6 +19,10 @@ function createDefaultProject() {
   return {
     id: DEFAULT_PROJECT_ID,
     name: 'Dự án mặc định',
+    investor: '',
+    location: '',
+    capacity: '',
+    notes: '',
     createdAt: new Date().toISOString(),
   };
 }
@@ -68,6 +72,10 @@ function loadInitialProjects() {
           .map((p) => ({
             id: String(p.id),
             name: String(p.name).trim() || 'Dự án không tên',
+            investor: String(p.investor || ''),
+            location: String(p.location || ''),
+            capacity: String(p.capacity || ''),
+            notes: String(p.notes || ''),
             createdAt: p.createdAt ? String(p.createdAt) : new Date().toISOString(),
           }));
         if (normalized.length > 0) {
@@ -250,19 +258,53 @@ export function AppProvider({ children }) {
     [projectList]
   );
 
-  const createProject = useCallback((rawName) => {
-    const trimmed = String(rawName || '').trim();
+  const createProject = useCallback((rawInput) => {
+    const payload =
+      typeof rawInput === 'object' && rawInput !== null
+        ? rawInput
+        : { name: rawInput };
+    const trimmed = String(payload.name || '').trim();
     if (!trimmed) {
       return { ok: false, message: 'Vui lòng nhập tên dự án.' };
     }
     const newProject = {
       id: createProjectId(),
       name: trimmed,
+      investor: String(payload.investor || '').trim(),
+      location: String(payload.location || '').trim(),
+      capacity: String(payload.capacity || '').trim(),
+      notes: String(payload.notes || '').trim(),
       createdAt: new Date().toISOString(),
     };
     setProjectList((prev) => [...prev, newProject]);
     setCurrentProjectId(newProject.id);
     return { ok: true, project: newProject };
+  }, []);
+
+  const updateProject = useCallback((projectId, updates) => {
+    const trimmedName = String(updates?.name || '').trim();
+    if (!trimmedName) {
+      return { ok: false, message: 'Tên dự án là bắt buộc.' };
+    }
+    let updated = false;
+    setProjectList((prev) =>
+      prev.map((project) => {
+        if (project.id !== projectId) return project;
+        updated = true;
+        return {
+          ...project,
+          name: trimmedName,
+          investor: String(updates?.investor ?? project.investor ?? '').trim(),
+          location: String(updates?.location ?? project.location ?? '').trim(),
+          capacity: String(updates?.capacity ?? project.capacity ?? '').trim(),
+          notes: String(updates?.notes ?? project.notes ?? '').trim(),
+        };
+      })
+    );
+    if (!updated) {
+      return { ok: false, message: 'Không tìm thấy dự án để cập nhật.' };
+    }
+    return { ok: true };
   }, []);
 
   const deleteProject = useCallback(
@@ -512,6 +554,7 @@ export function AppProvider({ children }) {
     () => ({
       selectProject,
       createProject,
+      updateProject,
       deleteProject,
       setGlobalQ,
       setPeakingFactor,
@@ -524,6 +567,7 @@ export function AppProvider({ children }) {
     [
       selectProject,
       createProject,
+      updateProject,
       deleteProject,
       setGlobalQ,
       setPeakingFactor,
@@ -539,6 +583,7 @@ export function AppProvider({ children }) {
       currentProject,
       selectProject,
       createProject,
+      updateProject,
       deleteProject,
       globalQ,
       setGlobalQ,
@@ -561,6 +606,7 @@ export function AppProvider({ children }) {
       currentProject,
       selectProject,
       createProject,
+      updateProject,
       deleteProject,
       globalQ,
       setGlobalQ,

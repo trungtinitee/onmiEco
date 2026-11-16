@@ -215,8 +215,6 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
   );
 
   const {
-    globalQ,
-    hydraulics,
     resetDefaults,
     exportProjectJson,
     importProjectJson,
@@ -400,8 +398,8 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
         </div>
 
         {/* Navigation: Standalone Dashboard + Accordion Groups */}
-        <nav className="flex-1 h-full overflow-y-auto overscroll-contain px-3 py-3 pb-24 space-y-2">
-          {/* Nút Trang chủ độc lập ở trên cùng */}
+        <nav className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 pb-6 space-y-2">
+          {/* Nút Trang chủ độc lập */}
           {dashboardMatchesSearch && (
             <NavLink
               to={DASHBOARD_ITEM.to}
@@ -620,32 +618,6 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
             </div>
           </div>
         </nav>
-
-        {/* Global flow summary pinned cleanly at bottom of sidebar */}
-        <div className="p-4 border-t border-slate-800 shrink-0">
-          <div className="rounded-lg bg-slate-800 border border-slate-700/80 p-3.5">
-            <div className="flex items-center justify-between text-xs text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <Gauge className="h-3.5 w-3.5 text-emerald-500" />
-                Lưu lượng chung (Q)
-              </span>
-              <span>m³/ngày</span>
-            </div>
-            <div className="mt-1.5 font-mono text-xl font-semibold text-emerald-400 tabular-nums">
-              {hydraulics.qDay.toLocaleString('vi-VN')}
-            </div>
-            <div className="mt-1 flex items-center gap-2 text-xs text-slate-400 font-mono tabular-nums">
-              <span>{hydraulics.qHour.toFixed(2)} m³/h</span>
-              <span aria-hidden="true">·</span>
-              <span>{hydraulics.qSecond.toFixed(2)} L/s</span>
-            </div>
-            {globalQ <= 0 && (
-              <p className="mt-2 text-xs text-amber-400">
-                Vui lòng nhập Q &gt; 0 để tính kích thước bể.
-              </p>
-            )}
-          </div>
-        </div>
       </aside>
     </>
   );
