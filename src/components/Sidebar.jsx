@@ -353,7 +353,7 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
 
       <aside
         aria-label="Điều hướng module kỹ thuật"
-        className={`no-print print:hidden fixed inset-y-0 left-0 z-50 flex w-72 flex-col h-full max-h-dvh md:max-h-none bg-slate-900 border-r border-slate-800 overscroll-contain transition-transform duration-200 ease-out md:static md:w-64 lg:w-72 md:translate-x-0 shrink-0 ${
+        className={`no-print print:hidden fixed inset-y-0 left-0 z-50 flex w-72 flex-col h-full max-h-dvh md:max-h-none bg-slate-900 border-r border-slate-800 overflow-hidden md:overflow-visible overscroll-contain transition-transform duration-200 ease-out md:static md:w-64 lg:w-72 md:translate-x-0 shrink-0 ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >

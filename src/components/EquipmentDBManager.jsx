@@ -197,6 +197,7 @@ export function matchesMultiKeywordSearch(item, query) {
   const combinedText = [
     item?.name,
     item?.id,
+    item?.code,
     item?.specs,
     item?.brand,
     item?.category,
@@ -298,19 +299,11 @@ export default function EquipmentDBManager() {
     });
   }, []);
 
-  const uniqueCategories = useMemo(() => {
-    const set = new Set();
-    equipments.forEach((item) => {
-      const cat = String(item.category || '').trim();
-      if (cat) set.add(cat);
-    });
-    return Array.from(set);
-  }, [equipments]);
-
   const availableCategories = useMemo(() => {
     const set = new Set(EQUIPMENT_CATEGORIES);
     equipments.forEach((item) => {
-      if (item.category) set.add(item.category);
+      const cat = String(item.category || '').trim();
+      if (cat) set.add(cat);
     });
     return Array.from(set);
   }, [equipments]);
@@ -323,6 +316,11 @@ export default function EquipmentDBManager() {
       return matchesMultiKeywordSearch(item, searchQuery);
     });
   }, [equipments, searchQuery, selectedCategory]);
+
+  const hasFilteredPower = useMemo(
+    () => filteredEquipments.some((item) => Number(item.power) > 0),
+    [filteredEquipments]
+  );
 
   const stats = useMemo(() => {
     const totalCount = equipments.length;
@@ -653,7 +651,11 @@ export default function EquipmentDBManager() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+        <div
+          className={`rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900 ${
+            !hasFilteredPower ? 'print:hidden' : ''
+          }`}
+        >
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-600">
             <span>Tổng công suất định mức kho</span>
             <Zap className="h-4 w-4 text-amber-400" />
@@ -777,7 +779,11 @@ export default function EquipmentDBManager() {
           <h2 className="text-sm font-semibold text-slate-200 print:text-gray-900">
             Danh mục Thiết bị ({filteredEquipments.length})
           </h2>
-          <span className="text-xs text-slate-400 print:text-gray-600">
+          <span
+            className={`text-xs text-slate-400 print:text-gray-600 ${
+              !hasFilteredPower ? 'print:hidden' : ''
+            }`}
+          >
             Đơn vị công suất: kW
           </span>
         </div>
@@ -811,7 +817,11 @@ export default function EquipmentDBManager() {
                       </th>
                       <th className="py-3 px-4 font-semibold">Tên / Mã hiệu</th>
                       <th className="py-3 px-4 font-semibold">Thông số kỹ thuật</th>
-                      <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                      <th
+                        className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
+                          !hasFilteredPower ? 'print:hidden' : ''
+                        }`}
+                      >
                         Công suất
                       </th>
                       <th className="py-3 px-4 font-semibold">Hãng SX / Xuất xứ</th>
@@ -847,7 +857,11 @@ export default function EquipmentDBManager() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 px-4 align-top text-right font-mono font-semibold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900">
+                        <td
+                          className={`py-3 px-4 align-top text-right font-mono font-semibold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900 ${
+                            !hasFilteredPower ? 'print:hidden' : ''
+                          }`}
+                        >
                           {Number(item.power || 0).toFixed(2)} kW
                         </td>
                         <td className="py-3 px-4 align-top text-slate-300 min-w-[140px] print:text-gray-700">
@@ -901,7 +915,11 @@ export default function EquipmentDBManager() {
                               {item.category}
                             </span>
                           </div>
-                          <div className="font-mono text-sm font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900">
+                          <div
+                            className={`font-mono text-sm font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900 ${
+                              !hasFilteredPower ? 'print:hidden' : ''
+                            }`}
+                          >
                             {Number(item.power || 0).toFixed(2)} kW
                           </div>
                         </div>
@@ -970,10 +988,14 @@ export default function EquipmentDBManager() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="eq-form-title"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setIsFormOpen(false)}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-xl max-h-[90dvh] flex flex-col rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h3
                 id="eq-form-title"
                 className="text-base font-bold text-slate-100 flex items-center gap-2"
@@ -995,163 +1017,165 @@ export default function EquipmentDBManager() {
 
             <form
               onSubmit={handleSaveForm}
-              className="p-5 pb-20 space-y-4 overflow-y-auto"
+              className="flex-1 min-h-0 flex flex-col"
             >
-              {formError && (
-                <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3.5 py-2.5 text-xs text-red-200">
-                  {formError}
-                </div>
-              )}
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
+                {formError && (
+                  <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3.5 py-2.5 text-xs text-red-200">
+                    {formError}
+                  </div>
+                )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label
-                    htmlFor="eq-id"
-                    className="block text-xs font-medium text-slate-300 mb-1.5"
-                  >
-                    Mã thiết bị (ID)
-                  </label>
-                  <input
-                    id="eq-id"
-                    type="text"
-                    value={formState.id}
-                    onChange={(e) =>
-                      setFormState((p) => ({ ...p, id: e.target.value }))
-                    }
-                    placeholder="VD: EQ-PUMP-04"
-                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label
+                      htmlFor="eq-id"
+                      className="block text-xs font-medium text-slate-300 mb-1.5"
+                    >
+                      Mã thiết bị (ID)
+                    </label>
+                    <input
+                      id="eq-id"
+                      type="text"
+                      value={formState.id}
+                      onChange={(e) =>
+                        setFormState((p) => ({ ...p, id: e.target.value }))
+                      }
+                      placeholder="VD: EQ-PUMP-04"
+                      className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm font-mono text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
 
-                <div>
-                  <label
-                    htmlFor="eq-category"
-                    className="block text-xs font-medium text-slate-300 mb-1.5"
-                  >
-                    Phân loại (Category)
-                  </label>
-                  <input
-                    id="eq-category"
-                    type="text"
-                    list="category-options"
-                    value={formState.category}
-                    onChange={(e) =>
-                      setFormState((p) => ({ ...p, category: e.target.value }))
-                    }
-                    placeholder="Chọn có sẵn hoặc nhập nhóm mới..."
-                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
-                  <datalist id="category-options">
-                    {uniqueCategories.map((cat) => (
-                      <option key={cat} value={cat} />
-                    ))}
-                  </datalist>
-                </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="eq-name"
-                  className="block text-xs font-medium text-slate-300 mb-1.5"
-                >
-                  Tên / Mã hiệu thiết bị <span className="text-red-400">*</span>
-                </label>
-                <input
-                  id="eq-name"
-                  type="text"
-                  required
-                  value={formState.name}
-                  onChange={(e) =>
-                    setFormState((p) => ({ ...p, name: e.target.value }))
-                  }
-                  placeholder="VD: Bơm chìm nước thải Tsurumi 80B21.5"
-                  className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="eq-specs"
-                  className="block text-xs font-medium text-slate-300 mb-1.5"
-                >
-                  Thông số kỹ thuật (Lưu lượng, cột áp, kích thước...)
-                </label>
-                <input
-                  id="eq-specs"
-                  type="text"
-                  value={formState.specs}
-                  onChange={(e) =>
-                    setFormState((p) => ({ ...p, specs: e.target.value }))
-                  }
-                  placeholder="VD: Q = 30 m³/h, H = 12 m, DN80"
-                  className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label
-                    htmlFor="eq-power"
-                    className="block text-xs font-medium text-slate-300 mb-1.5"
-                  >
-                    Công suất (kW)
-                  </label>
-                  <input
-                    id="eq-power"
-                    type="text"
-                    inputMode="decimal"
-                    value={formState.power}
-                    onChange={(e) =>
-                      setFormState((p) => ({
-                        ...p,
-                        power: sanitizeDecimalInput(e.target.value),
-                      }))
-                    }
-                    placeholder="1.5"
-                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm font-mono text-amber-300 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div>
+                    <label
+                      htmlFor="eq-category"
+                      className="block text-xs font-medium text-slate-300 mb-1.5"
+                    >
+                      Phân loại (Category)
+                    </label>
+                    <input
+                      id="eq-category"
+                      type="text"
+                      list="category-options"
+                      value={formState.category}
+                      onChange={(e) =>
+                        setFormState((p) => ({ ...p, category: e.target.value }))
+                      }
+                      placeholder="Chọn có sẵn hoặc nhập nhóm mới..."
+                      className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <datalist id="category-options">
+                      {availableCategories.map((cat) => (
+                        <option key={cat} value={cat} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
 
                 <div>
                   <label
-                    htmlFor="eq-unit"
+                    htmlFor="eq-name"
                     className="block text-xs font-medium text-slate-300 mb-1.5"
                   >
-                    Đơn vị tính
+                    Tên / Mã hiệu thiết bị <span className="text-red-400">*</span>
                   </label>
                   <input
-                    id="eq-unit"
+                    id="eq-name"
                     type="text"
-                    value={formState.unit}
+                    required
+                    value={formState.name}
                     onChange={(e) =>
-                      setFormState((p) => ({ ...p, unit: e.target.value }))
+                      setFormState((p) => ({ ...p, name: e.target.value }))
                     }
-                    placeholder="Cái / Bộ / Đĩa"
+                    placeholder="VD: Bơm chìm nước thải Tsurumi 80B21.5"
                     className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
                   <label
-                    htmlFor="eq-brand"
+                    htmlFor="eq-specs"
                     className="block text-xs font-medium text-slate-300 mb-1.5"
                   >
-                    Hãng SX / Xuất xứ
+                    Thông số kỹ thuật (Lưu lượng, cột áp, kích thước...)
                   </label>
                   <input
-                    id="eq-brand"
+                    id="eq-specs"
                     type="text"
-                    value={formState.brand}
+                    value={formState.specs}
                     onChange={(e) =>
-                      setFormState((p) => ({ ...p, brand: e.target.value }))
+                      setFormState((p) => ({ ...p, specs: e.target.value }))
                     }
-                    placeholder="VD: Tsurumi / Nhật Bản"
+                    placeholder="VD: Q = 30 m³/h, H = 12 m, DN80"
                     className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label
+                      htmlFor="eq-power"
+                      className="block text-xs font-medium text-slate-300 mb-1.5"
+                    >
+                      Công suất (kW)
+                    </label>
+                    <input
+                      id="eq-power"
+                      type="text"
+                      inputMode="decimal"
+                      value={formState.power}
+                      onChange={(e) =>
+                        setFormState((p) => ({
+                          ...p,
+                          power: sanitizeDecimalInput(e.target.value),
+                        }))
+                      }
+                      placeholder="1.5"
+                      className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm font-mono text-amber-300 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="eq-unit"
+                      className="block text-xs font-medium text-slate-300 mb-1.5"
+                    >
+                      Đơn vị tính
+                    </label>
+                    <input
+                      id="eq-unit"
+                      type="text"
+                      value={formState.unit}
+                      onChange={(e) =>
+                        setFormState((p) => ({ ...p, unit: e.target.value }))
+                      }
+                      placeholder="Cái / Bộ / Đĩa"
+                      className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor="eq-brand"
+                      className="block text-xs font-medium text-slate-300 mb-1.5"
+                    >
+                      Hãng SX / Xuất xứ
+                    </label>
+                    <input
+                      id="eq-brand"
+                      type="text"
+                      value={formState.brand}
+                      onChange={(e) =>
+                        setFormState((p) => ({ ...p, brand: e.target.value }))
+                      }
+                      placeholder="VD: Tsurumi / Nhật Bản"
+                      className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+                </div>
               </div>
 
-              <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5">
+              <div className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex items-center justify-end gap-2.5 shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsFormOpen(false)}
@@ -1178,21 +1202,37 @@ export default function EquipmentDBManager() {
         <div
           role="dialog"
           aria-modal="true"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setDeleteTarget(null)}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-100">
-              Xác nhận xóa thiết bị
-            </h3>
-            <p className="text-sm text-slate-300">
-              Bạn có chắc chắn muốn xóa thiết bị{' '}
-              <strong className="text-white">{deleteTarget.name}</strong> (
-              <span className="font-mono text-xs text-slate-400">
-                {deleteTarget.id}
-              </span>
-              ) khỏi kho dữ liệu không?
-            </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-slate-800 shrink-0">
+              <h3 className="text-base font-bold text-slate-100">
+                Xác nhận xóa thiết bị
+              </h3>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                aria-label="Đóng cửa sổ"
+                className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="h-5 w-5 pointer-events-none" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Bạn có chắc chắn muốn xóa thiết bị{' '}
+                <strong className="text-white">{deleteTarget.name}</strong> (
+                <span className="font-mono text-xs text-slate-400">
+                  {deleteTarget.id}
+                </span>
+                ) khỏi kho dữ liệu không?
+              </p>
+            </div>
+            <div className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setDeleteTarget(null)}
@@ -1217,17 +1257,21 @@ export default function EquipmentDBManager() {
         <div
           role="dialog"
           aria-modal="true"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setPendingImportList(null)}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2.5 min-w-0">
                 <FileJson className="h-5 w-5 text-emerald-400 shrink-0" />
-                <div>
-                  <h3 className="text-base font-bold text-slate-100">
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-100 truncate">
                     Tùy chọn Import Danh mục Thiết bị
                   </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">
                     File: <span className="text-slate-200">{importFileName}</span>{' '}
                     ({pendingImportList.length} thiết bị hợp lệ)
                   </p>
@@ -1237,50 +1281,52 @@ export default function EquipmentDBManager() {
                 type="button"
                 onClick={() => setPendingImportList(null)}
                 aria-label="Đóng"
-                className="relative z-20 cursor-pointer p-1 text-slate-400 hover:text-white"
+                className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 shrink-0"
               >
                 <X className="h-4 w-4 pointer-events-none" />
               </button>
             </div>
 
-            <p className="text-sm text-slate-300">
-              Chọn cách nhập dữ liệu vào kho thiết bị hiện tại (đang có{' '}
-              <strong>{equipments.length}</strong> thiết bị):
-            </p>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
+              <p className="text-sm text-slate-300">
+                Chọn cách nhập dữ liệu vào kho thiết bị hiện tại (đang có{' '}
+                <strong>{equipments.length}</strong> thiết bị):
+              </p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => applyImportMode('append')}
-                className="relative z-20 cursor-pointer select-none text-left rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-emerald-500/40 p-3.5 transition-colors"
-              >
-                <div className="pointer-events-none text-sm font-semibold text-emerald-400">
-                  Nối thêm vào kho hiện tại
-                </div>
-                <div className="pointer-events-none mt-1 text-xs text-slate-400">
-                  Giữ nguyên dữ liệu cũ, tự động đổi mã nếu bị trùng ID.
-                </div>
-              </button>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => applyImportMode('append')}
+                  className="relative z-20 cursor-pointer select-none text-left rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-emerald-500/40 p-3.5 transition-colors"
+                >
+                  <div className="pointer-events-none text-sm font-semibold text-emerald-400">
+                    Nối thêm vào kho hiện tại
+                  </div>
+                  <div className="pointer-events-none mt-1 text-xs text-slate-400">
+                    Giữ nguyên dữ liệu cũ, tự động đổi mã nếu bị trùng ID.
+                  </div>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => applyImportMode('overwrite')}
-                className="relative z-20 cursor-pointer select-none text-left rounded-xl bg-slate-800 hover:bg-red-950/40 border border-amber-500/40 p-3.5 transition-colors"
-              >
-                <div className="pointer-events-none text-sm font-semibold text-amber-400">
-                  Ghi đè toàn bộ kho
-                </div>
-                <div className="pointer-events-none mt-1 text-xs text-slate-400">
-                  Thay thế hoàn toàn danh sách hiện tại bằng file JSON mới.
-                </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => applyImportMode('overwrite')}
+                  className="relative z-20 cursor-pointer select-none text-left rounded-xl bg-slate-800 hover:bg-red-950/40 border border-amber-500/40 p-3.5 transition-colors"
+                >
+                  <div className="pointer-events-none text-sm font-semibold text-amber-400">
+                    Ghi đè toàn bộ kho
+                  </div>
+                  <div className="pointer-events-none mt-1 text-xs text-slate-400">
+                    Thay thế hoàn toàn danh sách hiện tại bằng file JSON mới.
+                  </div>
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-end pt-1">
+            <div className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => setPendingImportList(null)}
-                className="relative z-20 cursor-pointer select-none px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-medium text-slate-300"
+                className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-medium text-slate-300"
               >
                 <span className="pointer-events-none">Hủy Import</span>
               </button>
@@ -1294,19 +1340,35 @@ export default function EquipmentDBManager() {
         <div
           role="dialog"
           aria-modal="true"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setConfirmResetOpen(false)}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-5 space-y-4 shadow-2xl">
-            <h3 className="text-base font-bold text-slate-100">
-              Khôi phục danh mục mẫu chuẩn?
-            </h3>
-            <p className="text-sm text-slate-300">
-              Thao tác này sẽ đặt lại kho thiết bị về{' '}
-              <strong>{DEFAULT_EQUIPMENTS.length}</strong> thiết bị cơ điện mẫu
-              của omniEco. Nếu bạn muốn giữ dữ liệu hiện tại, hãy Export JSON
-              trước.
-            </p>
-            <div className="flex items-center justify-end gap-2.5 pt-2">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-slate-800 shrink-0">
+              <h3 className="text-base font-bold text-slate-100">
+                Khôi phục danh mục mẫu chuẩn?
+              </h3>
+              <button
+                type="button"
+                onClick={() => setConfirmResetOpen(false)}
+                aria-label="Đóng cửa sổ"
+                className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="h-5 w-5 pointer-events-none" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Thao tác này sẽ đặt lại kho thiết bị về{' '}
+                <strong>{DEFAULT_EQUIPMENTS.length}</strong> thiết bị cơ điện mẫu
+                của omniEco. Nếu bạn muốn giữ dữ liệu hiện tại, hãy Export JSON
+                trước.
+              </p>
+            </div>
+            <div className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 flex items-center justify-end gap-2.5 shrink-0">
               <button
                 type="button"
                 onClick={() => setConfirmResetOpen(false)}

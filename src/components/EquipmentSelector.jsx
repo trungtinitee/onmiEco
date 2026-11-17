@@ -19,6 +19,7 @@ import {
   loadEquipmentsFromStorage,
   matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
+import { useAppContext } from '../context/AppContext';
 
 function sanitizeIntInput(raw) {
   return String(raw || '').replace(/[^0-9]/g, '');
@@ -48,6 +49,7 @@ export default function EquipmentSelector({
   onChange,
   compact = false,
 }) {
+  const { printOptions } = useAppContext();
   const isControlled = Array.isArray(value);
 
   const [internalSelected, setInternalSelected] = useState(() =>
@@ -264,6 +266,12 @@ export default function EquipmentSelector({
     [assignedList, commitList]
   );
 
+  const hasAssignedPower = useMemo(
+    () => assignedList.some((item) => Number(item.power) > 0),
+    [assignedList]
+  );
+  const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
+
   return (
     <section
       className={`rounded-xl bg-slate-800 border border-slate-700/80 ${
@@ -279,7 +287,11 @@ export default function EquipmentSelector({
               Thiết bị Cơ điện gán cho {moduleLabel}
             </h3>
           </div>
-          <p className="text-xs text-slate-400 mt-0.5 print:text-gray-600">
+          <p
+            className={`text-xs text-slate-400 mt-0.5 print:text-gray-600 ${
+              !showPrintNotes ? 'print:hidden' : ''
+            }`}
+          >
             Lấy trực tiếp từ Kho Thiết bị (LocalStorage). Tổng công suất điện = Σ
             (Số lượng × Công suất đơn vị).
           </p>
@@ -287,7 +299,11 @@ export default function EquipmentSelector({
 
         <div className="flex flex-wrap items-center gap-2.5">
           {/* Tổng công suất điện */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 border border-emerald-500/40 print:bg-transparent print:border-gray-400">
+          <div
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-900 border border-emerald-500/40 print:bg-transparent print:border-gray-400 ${
+              !hasAssignedPower ? 'print:hidden' : ''
+            }`}
+          >
             <Zap className="h-4 w-4 text-amber-400 shrink-0 print:text-gray-800" />
             <div className="text-xs">
               <span className="text-slate-400 print:text-gray-600">
@@ -364,13 +380,21 @@ export default function EquipmentSelector({
             <thead>
               <tr className="bg-slate-900/80 border-b border-slate-700/80 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-100 print:text-gray-700 print:border-gray-300">
                 <th className="py-2.5 px-3 font-semibold">Thiết bị / Thông số</th>
-                <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">
+                <th
+                  className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap ${
+                    !hasAssignedPower ? 'print:hidden' : ''
+                  }`}
+                >
                   Đơn giá P (kW)
                 </th>
                 <th className="py-2.5 px-3 font-semibold text-center whitespace-nowrap">
                   Số lượng
                 </th>
-                <th className="py-2.5 px-3 font-semibold text-right whitespace-nowrap">
+                <th
+                  className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap ${
+                    !hasAssignedPower ? 'print:hidden' : ''
+                  }`}
+                >
                   Tổng P (kW)
                 </th>
                 <th className="print:hidden py-2.5 px-3 font-semibold text-right whitespace-nowrap">
@@ -397,13 +421,21 @@ export default function EquipmentSelector({
                         </span>
                       </div>
                       {(item.specs || item.brand) && (
-                        <div className="mt-0.5 text-xs text-slate-400 print:text-gray-600">
+                        <div
+                          className={`mt-0.5 text-xs text-slate-400 print:text-gray-600 ${
+                            !showPrintNotes ? 'print:hidden' : ''
+                          }`}
+                        >
                           {[item.specs, item.brand].filter(Boolean).join(' · ')}
                         </div>
                       )}
                     </td>
 
-                    <td className="py-2.5 px-3 align-middle text-right font-mono text-slate-300 tabular-nums whitespace-nowrap print:text-gray-800">
+                    <td
+                      className={`py-2.5 px-3 align-middle text-right font-mono text-slate-300 tabular-nums whitespace-nowrap print:text-gray-800 ${
+                        !hasAssignedPower ? 'print:hidden' : ''
+                      }`}
+                    >
                       {Number(item.power || 0).toFixed(2)}
                     </td>
 
@@ -428,7 +460,11 @@ export default function EquipmentSelector({
                       </span>
                     </td>
 
-                    <td className="py-2.5 px-3 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900">
+                    <td
+                      className={`py-2.5 px-3 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-gray-900 ${
+                        !hasAssignedPower ? 'print:hidden' : ''
+                      }`}
+                    >
                       {rowPowerKw.toFixed(2)} kW
                     </td>
 
@@ -448,14 +484,19 @@ export default function EquipmentSelector({
             </tbody>
             <tfoot>
               <tr className="bg-slate-900/70 border-t border-slate-700 text-xs font-semibold print:bg-gray-100 print:border-gray-300">
-                <td className="py-2.5 px-3 text-slate-300 print:text-gray-800" colSpan={2}>
+                <td className="py-2.5 px-3 text-slate-300 print:text-gray-800">
                   Tổng cộng ({assignedList.length} loại thiết bị ·{' '}
                   {totals.totalUnits} thiết bị)
                 </td>
+                <td className={!hasAssignedPower ? 'print:hidden' : ''} />
                 <td className="py-2.5 px-3 text-center font-mono text-emerald-400 print:text-gray-900">
                   {totals.totalUnits}
                 </td>
-                <td className="py-2.5 px-3 text-right font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900">
+                <td
+                  className={`py-2.5 px-3 text-right font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900 ${
+                    !hasAssignedPower ? 'print:hidden' : ''
+                  }`}
+                >
                   {totals.totalPowerKw.toFixed(2)} kW
                 </td>
                 <td className="print:hidden" />
@@ -511,14 +552,14 @@ export default function EquipmentSelector({
                           {item.brand || '—'}
                         </span>
                       </div>
-                      <div>
+                      <div className={!showPrintNotes ? 'print:hidden' : ''}>
                         <span className="text-slate-500 print:text-gray-600">
                           Thông số:{' '}
                         </span>
                         <span>{item.specs || 'Chưa có mô tả thông số'}</span>
                       </div>
                       <div className="flex items-center justify-between gap-2 pt-0.5">
-                        <span>
+                        <span className={!hasAssignedPower ? 'print:hidden' : ''}>
                           <span className="text-slate-500 print:text-gray-600">
                             P đơn vị:{' '}
                           </span>
@@ -562,7 +603,11 @@ export default function EquipmentSelector({
                       </span>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs pt-1">
+                    <div
+                      className={`flex items-center justify-between text-xs pt-1 ${
+                        !hasAssignedPower ? 'print:hidden' : ''
+                      }`}
+                    >
                       <span className="text-slate-400 print:text-gray-600">
                         Tổng công suất:
                       </span>
@@ -581,7 +626,11 @@ export default function EquipmentSelector({
               Tổng cộng ({assignedList.length} loại thiết bị ·{' '}
               {totals.totalUnits} thiết bị)
             </span>
-            <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900">
+            <span
+              className={`font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-gray-900 ${
+                !hasAssignedPower ? 'print:hidden' : ''
+              }`}
+            >
               {totals.totalPowerKw.toFixed(2)} kW
             </span>
           </div>
@@ -594,11 +643,15 @@ export default function EquipmentSelector({
           role="dialog"
           aria-modal="true"
           aria-labelledby="eq-selector-title"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={() => setIsModalOpen(false)}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-4xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-800 shrink-0">
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <div>
                 <h3
                   id="eq-selector-title"
@@ -632,7 +685,7 @@ export default function EquipmentSelector({
             </div>
 
             {/* Filter & View Toggle Bar */}
-            <div className="p-4 sm:p-5 space-y-3 border-b border-slate-800 shrink-0">
+            <div className="p-3.5 sm:p-5 space-y-2.5 sm:space-y-3 border-b border-slate-800 shrink-0">
               <div className="flex flex-col sm:flex-row gap-2.5">
                 <div className="relative w-full flex-1">
                   <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -707,7 +760,7 @@ export default function EquipmentSelector({
             </div>
 
             {/* Scrollable Catalog Items (Table or Grid View) */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 pb-24">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
               {filteredCatalog.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-400">
                   Không tìm thấy thiết bị nào trong kho phù hợp từ khóa.
@@ -878,7 +931,7 @@ export default function EquipmentSelector({
             {/* Footer: Quantity Input + Submit */}
             <form
               onSubmit={handleConfirmAddEquipment}
-              className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/60 space-y-3 shrink-0"
+              className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 space-y-2.5 sm:space-y-3 shrink-0"
             >
               {modalError && (
                 <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3 py-2 text-xs text-red-200">

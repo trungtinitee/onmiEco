@@ -13,7 +13,44 @@ const AppActionsContext = createContext(null);
 export const STORAGE_KEY = 'envirocalc_global_state_v1';
 export const PROJECTS_STORAGE_KEY = 'omniEco_Projects';
 export const ACTIVE_PROJECT_STORAGE_KEY = 'omniEco_ActiveProjectId';
+export const PRINT_OPTIONS_STORAGE_KEY = 'omniEco_PrintOptions';
 export const DEFAULT_PROJECT_ID = 'default-project';
+
+export const DEFAULT_PRINT_OPTIONS = {
+  showCompanyHeader: true,
+  showProjectInfo: true,
+  showDetailedNotes: true,
+  showSignatures: true,
+};
+
+function loadInitialPrintOptions() {
+  if (typeof window === 'undefined') return DEFAULT_PRINT_OPTIONS;
+  try {
+    const raw = window.localStorage.getItem(PRINT_OPTIONS_STORAGE_KEY);
+    if (!raw) return DEFAULT_PRINT_OPTIONS;
+    const parsed = JSON.parse(raw);
+    return {
+      showCompanyHeader:
+        typeof parsed?.showCompanyHeader === 'boolean'
+          ? parsed.showCompanyHeader
+          : true,
+      showProjectInfo:
+        typeof parsed?.showProjectInfo === 'boolean'
+          ? parsed.showProjectInfo
+          : true,
+      showDetailedNotes:
+        typeof parsed?.showDetailedNotes === 'boolean'
+          ? parsed.showDetailedNotes
+          : true,
+      showSignatures:
+        typeof parsed?.showSignatures === 'boolean'
+          ? parsed.showSignatures
+          : true,
+    };
+  } catch {
+    return DEFAULT_PRINT_OPTIONS;
+  }
+}
 
 function createDefaultProject() {
   return {
@@ -219,6 +256,11 @@ export function AppProvider({ children }) {
     initial.wastewaterPollutants
   );
   const [bioFocusSignal, setBioFocusSignal] = useState(0);
+  const [printOptions, setPrintOptionsState] = useState(loadInitialPrintOptions);
+  const [printModalState, setPrintModalState] = useState({
+    open: false,
+    documentTitle: '',
+  });
 
   const currentProject = useMemo(
     () =>
@@ -281,31 +323,32 @@ export function AppProvider({ children }) {
     return { ok: true, project: newProject };
   }, []);
 
-  const updateProject = useCallback((projectId, updates) => {
-    const trimmedName = String(updates?.name || '').trim();
-    if (!trimmedName) {
-      return { ok: false, message: 'Tên dự án là bắt buộc.' };
-    }
-    let updated = false;
-    setProjectList((prev) =>
-      prev.map((project) => {
-        if (project.id !== projectId) return project;
-        updated = true;
-        return {
-          ...project,
-          name: trimmedName,
-          investor: String(updates?.investor ?? project.investor ?? '').trim(),
-          location: String(updates?.location ?? project.location ?? '').trim(),
-          capacity: String(updates?.capacity ?? project.capacity ?? '').trim(),
-          notes: String(updates?.notes ?? project.notes ?? '').trim(),
-        };
-      })
-    );
-    if (!updated) {
-      return { ok: false, message: 'Không tìm thấy dự án để cập nhật.' };
-    }
-    return { ok: true };
-  }, []);
+  const updateProject = useCallback(
+    (projectId, updates) => {
+      const trimmedName = String(updates?.name || '').trim();
+      if (!trimmedName) {
+        return { ok: false, message: 'Tên dự án là bắt buộc.' };
+      }
+      if (!projectList.some((project) => project.id === projectId)) {
+        return { ok: false, message: 'Không tìm thấy dự án để cập nhật.' };
+      }
+      setProjectList((prev) =>
+        prev.map((project) => {
+          if (project.id !== projectId) return project;
+          return {
+            ...project,
+            name: trimmedName,
+            investor: String(updates?.investor ?? project.investor ?? '').trim(),
+            location: String(updates?.location ?? project.location ?? '').trim(),
+            capacity: String(updates?.capacity ?? project.capacity ?? '').trim(),
+            notes: String(updates?.notes ?? project.notes ?? '').trim(),
+          };
+        })
+      );
+      return { ok: true };
+    },
+    [projectList]
+  );
 
   const deleteProject = useCallback(
     (projectId) => {
@@ -380,6 +423,45 @@ export function AppProvider({ children }) {
 
   const triggerBiologyFocus = useCallback(() => {
     setBioFocusSignal((n) => n + 1);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        PRINT_OPTIONS_STORAGE_KEY,
+        JSON.stringify(printOptions)
+      );
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [printOptions]);
+
+  const setPrintOptions = useCallback((updater) => {
+    setPrintOptionsState((prev) =>
+      typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }
+    );
+  }, []);
+
+  const openPrintModal = useCallback((documentTitle = '') => {
+    setPrintModalState({
+      open: true,
+      documentTitle: typeof documentTitle === 'string' ? documentTitle : '',
+    });
+  }, []);
+
+  const closePrintModal = useCallback(() => {
+    setPrintModalState((prev) => ({ ...prev, open: false }));
+  }, []);
+
+  const confirmAndPrint = useCallback(() => {
+    setPrintModalState((prev) => ({ ...prev, open: false }));
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        window.print();
+      });
+    });
   }, []);
 
   const exportProjectJson = useCallback(() => {
@@ -563,6 +645,10 @@ export function AppProvider({ children }) {
       triggerBiologyFocus,
       resetDefaults,
       importProjectJson,
+      setPrintOptions,
+      openPrintModal,
+      closePrintModal,
+      confirmAndPrint,
     }),
     [
       selectProject,
@@ -574,6 +660,10 @@ export function AppProvider({ children }) {
       triggerBiologyFocus,
       resetDefaults,
       importProjectJson,
+      setPrintOptions,
+      openPrintModal,
+      closePrintModal,
+      confirmAndPrint,
     ]
   );
 
@@ -600,6 +690,12 @@ export function AppProvider({ children }) {
       resetDefaults,
       exportProjectJson,
       importProjectJson,
+      printOptions,
+      printModalState,
+      setPrintOptions,
+      openPrintModal,
+      closePrintModal,
+      confirmAndPrint,
     }),
     [
       projectList,
@@ -621,6 +717,12 @@ export function AppProvider({ children }) {
       resetDefaults,
       exportProjectJson,
       importProjectJson,
+      printOptions,
+      printModalState,
+      setPrintOptions,
+      openPrintModal,
+      closePrintModal,
+      confirmAndPrint,
     ]
   );
 

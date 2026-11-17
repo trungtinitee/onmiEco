@@ -146,10 +146,14 @@ const ProjectModals = memo(function ProjectModals({
           role="dialog"
           aria-modal="true"
           aria-labelledby="switch-project-title"
-          className="print:hidden fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={onClose}
+          className="print:hidden fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-lg max-h-[88dvh] flex flex-col rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-800 shrink-0">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <FolderKanban className="h-5 w-5 text-emerald-400 shrink-0" />
                 <h2
@@ -172,7 +176,7 @@ const ProjectModals = memo(function ProjectModals({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto overscroll-contain divide-y divide-slate-800/80 p-2">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-slate-800/80 p-3 sm:p-4">
               {projectList.map((project) => {
                 const isActive = project.id === currentProject.id;
                 return (
@@ -261,7 +265,7 @@ const ProjectModals = memo(function ProjectModals({
               })}
             </div>
 
-            <div className="flex items-center justify-between gap-2.5 px-5 py-3.5 bg-slate-950/70 border-t border-slate-800 shrink-0">
+            <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
               <button
                 type="button"
                 onClick={() => onOpenModal?.('create')}
@@ -289,10 +293,14 @@ const ProjectModals = memo(function ProjectModals({
           role="dialog"
           aria-modal="true"
           aria-labelledby="project-info-title"
-          className="print:hidden fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={onClose}
+          className="print:hidden fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-lg max-h-[90dvh] flex flex-col rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800 shrink-0">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <div>
                 <h2
                   id="project-info-title"
@@ -319,8 +327,9 @@ const ProjectModals = memo(function ProjectModals({
 
             <form
               onSubmit={handleSubmitInfo}
-              className="flex-1 overflow-y-auto p-5 space-y-4"
+              className="flex-1 min-h-0 flex flex-col"
             >
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
               {infoError && (
                 <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3 py-2 text-xs text-red-200">
                   {infoError}
@@ -439,7 +448,9 @@ const ProjectModals = memo(function ProjectModals({
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-800">
+              </div>
+
+              <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
                 <button
                   type="button"
                   onClick={onClose}
@@ -466,10 +477,14 @@ const ProjectModals = memo(function ProjectModals({
           role="dialog"
           aria-modal="true"
           aria-labelledby="create-project-title"
-          className="print:hidden fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={onClose}
+          className="print:hidden fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h2
                 id="create-project-title"
                 className="text-base font-bold text-slate-100 flex items-center gap-2"
@@ -487,37 +502,42 @@ const ProjectModals = memo(function ProjectModals({
               </button>
             </div>
 
-            <form onSubmit={handleSubmitCreate} className="p-5 space-y-4">
-              <div>
-                <label
-                  htmlFor="new-project-name"
-                  className="block text-xs font-medium text-slate-300 mb-1.5"
-                >
-                  Tên dự án <span className="text-red-400">*</span>
-                </label>
-                <input
-                  ref={createInputRef}
-                  id="new-project-name"
-                  type="text"
-                  required
-                  value={newProjectName}
-                  onChange={(e) => {
-                    setNewProjectName(e.target.value);
-                    if (createError) setCreateError('');
-                  }}
-                  placeholder="VD: Trạm XLNT KCN Long Thành - 5.000 m³/ng"
-                  className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-                />
-                {createError && (
-                  <p className="mt-1.5 text-xs text-red-400">{createError}</p>
-                )}
-                <p className="mt-2 text-xs text-slate-400">
-                  Dự án mới sẽ được kích hoạt ngay với Danh mục Mua sắm (BOM)
-                  và Nhật ký vận hành tách biệt hoàn toàn.
-                </p>
+            <form
+              onSubmit={handleSubmitCreate}
+              className="flex-1 min-h-0 flex flex-col"
+            >
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
+                <div>
+                  <label
+                    htmlFor="new-project-name"
+                    className="block text-xs font-medium text-slate-300 mb-1.5"
+                  >
+                    Tên dự án <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    ref={createInputRef}
+                    id="new-project-name"
+                    type="text"
+                    required
+                    value={newProjectName}
+                    onChange={(e) => {
+                      setNewProjectName(e.target.value);
+                      if (createError) setCreateError('');
+                    }}
+                    placeholder="VD: Trạm XLNT KCN Long Thành - 5.000 m³/ng"
+                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                  {createError && (
+                    <p className="mt-1.5 text-xs text-red-400">{createError}</p>
+                  )}
+                  <p className="mt-2 text-xs text-slate-400">
+                    Dự án mới sẽ được kích hoạt ngay với Danh mục Mua sắm (BOM)
+                    và Nhật ký vận hành tách biệt hoàn toàn.
+                  </p>
+                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2">
+              <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
                 <button
                   type="button"
                   onClick={onClose}
@@ -544,10 +564,14 @@ const ProjectModals = memo(function ProjectModals({
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-project-title"
-          className="print:hidden fixed inset-0 z-[140] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={clearDeleteTarget}
+          className="print:hidden fixed inset-0 z-[140] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h2
                 id="delete-project-title"
                 className="text-base font-bold text-red-400 flex items-center gap-2"
@@ -565,7 +589,7 @@ const ProjectModals = memo(function ProjectModals({
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
               <p className="text-sm text-slate-300 leading-relaxed">
                 Bạn có chắc chắn muốn xóa dự án{' '}
                 <strong className="text-white">
@@ -577,24 +601,24 @@ const ProjectModals = memo(function ProjectModals({
                 Toàn bộ dữ liệu Danh mục Mua sắm (BOM) và Nhật ký vận hành của
                 dự án này sẽ bị xóa khỏi trình duyệt và không thể khôi phục.
               </div>
+            </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={clearDeleteTarget}
-                  className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
-                >
-                  <span className="pointer-events-none">Hủy</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[40px] px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-semibold text-white"
-                >
-                  <Trash2 className="h-4 w-4 pointer-events-none shrink-0" />
-                  <span className="pointer-events-none">Xác nhận xóa</span>
-                </button>
-              </div>
+            <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
+              <button
+                type="button"
+                onClick={clearDeleteTarget}
+                className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
+              >
+                <span className="pointer-events-none">Hủy</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[40px] px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-semibold text-white"
+              >
+                <Trash2 className="h-4 w-4 pointer-events-none shrink-0" />
+                <span className="pointer-events-none">Xác nhận xóa</span>
+              </button>
             </div>
           </div>
         </div>

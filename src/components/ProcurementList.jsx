@@ -104,11 +104,19 @@ function saveProcurementToStorage(storageKey, list) {
 }
 
 export default function ProcurementList() {
-  const { currentProject } = useAppContext();
+  const { currentProject, printOptions, openPrintModal } = useAppContext();
   const bomStorageKey = getProcurementStorageKey(currentProject?.id);
 
-  const [items, setItems] = useState(() =>
-    loadProcurementFromStorage(bomStorageKey)
+  const [bomState, setBomState] = useState(() => ({
+    key: bomStorageKey,
+    items: loadProcurementFromStorage(bomStorageKey),
+  }));
+  const items = useMemo(
+    () =>
+      bomState.key === bomStorageKey
+        ? bomState.items
+        : loadProcurementFromStorage(bomStorageKey),
+    [bomState, bomStorageKey]
   );
   const [catalog, setCatalog] = useState(() => loadEquipmentsFromStorage());
 
@@ -137,7 +145,10 @@ export default function ProcurementList() {
 
   // Tự động load lại dữ liệu BOM khi chuyển đổi dự án
   useEffect(() => {
-    setItems(loadProcurementFromStorage(bomStorageKey));
+    setBomState({
+      key: bomStorageKey,
+      items: loadProcurementFromStorage(bomStorageKey),
+    });
     setIsModalOpen(false);
     setEditingBomId(null);
     setListSearch('');
@@ -172,7 +183,10 @@ export default function ProcurementList() {
       if (e.key === EQUIPMENT_STORAGE_KEY) {
         refreshCatalog();
       } else if (e.key === bomStorageKey) {
-        setItems(loadProcurementFromStorage(bomStorageKey));
+        setBomState({
+          key: bomStorageKey,
+          items: loadProcurementFromStorage(bomStorageKey),
+        });
       }
     };
     const onCustomUpdate = () => refreshCatalog();
@@ -200,10 +214,15 @@ export default function ProcurementList() {
 
   const updateItems = useCallback(
     (updater) => {
-      setItems((prev) => {
-        const next = typeof updater === 'function' ? updater(prev) : updater;
+      setBomState((prev) => {
+        const currentItems =
+          prev.key === bomStorageKey
+            ? prev.items
+            : loadProcurementFromStorage(bomStorageKey);
+        const next =
+          typeof updater === 'function' ? updater(currentItems) : updater;
         saveProcurementToStorage(bomStorageKey, next);
-        return next;
+        return { key: bomStorageKey, items: next };
       });
     },
     [bomStorageKey]
@@ -729,8 +748,23 @@ export default function ProcurementList() {
   }, [bomMode, items, consolidatedAllItems, totals, unitProcessOptions.length]);
 
   const handlePrint = useCallback(() => {
-    window.print();
-  }, []);
+    openPrintModal('Danh mục Thiết bị Cần Mua sắm (BOM)');
+  }, [openPrintModal]);
+
+  const hasAnyDetailedPower = useMemo(
+    () => filteredDetailedItems.some((item) => Number(item.power) > 0),
+    [filteredDetailedItems]
+  );
+
+  const hasAnyConsolidatedPower = useMemo(
+    () => filteredConsolidatedItems.some((item) => Number(item.power) > 0),
+    [filteredConsolidatedItems]
+  );
+
+  const activeHasAnyPower =
+    bomMode === 'detailed' ? hasAnyDetailedPower : hasAnyConsolidatedPower;
+  const showPrintProject = Boolean(printOptions?.showProjectInfo);
+  const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
 
   const hasFilteredResults =
     bomMode === 'detailed'
@@ -748,14 +782,22 @@ export default function ProcurementList() {
                 <ShoppingCart className="h-4 w-4 shrink-0" />
                 <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
               </div>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black">
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black ${
+                  !showPrintProject ? 'print:hidden' : ''
+                }`}
+              >
                 Dự án: {currentProject?.name}
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-slate-100 print:text-black">
               Danh mục Thiết bị Cần Mua sắm (BOM)
             </h1>
-            <p className="text-sm text-slate-400 print:text-gray-700 max-w-2xl">
+            <p
+              className={`text-sm text-slate-400 print:text-gray-700 max-w-2xl ${
+                !showPrintNotes ? 'print:hidden' : ''
+              }`}
+            >
               Quản lý chi tiết thiết bị theo từng hạng mục công trình hoặc xem
               tổng hợp cộng dồn số lượng cho dự án hiện tại để đặt hàng và theo
               dõi công suất điện lắp đặt.
@@ -821,7 +863,11 @@ export default function ProcurementList() {
           </div>
         </div>
 
-        <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
+        <div
+          className={`rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black ${
+            !activeHasAnyPower ? 'print:hidden' : ''
+          }`}
+        >
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-700">
             <span>Tổng công suất điện danh mục</span>
             <Zap className="h-4 w-4 text-amber-400 print:text-black" />
@@ -1022,13 +1068,17 @@ export default function ProcurementList() {
           </div>
         ) : bomMode === 'detailed' ? (
           <>
-            {detailedGroupedByProcess.map((group) => (
+            {detailedGroupedByProcess.map((group) => {
+              const groupHasPower = group.items.some(
+                (item) => Number(item.power) > 0
+              );
+              return (
               <div
                 key={group.unitProcess}
                 className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
               >
                 {/* Unit Process Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300 print:break-inside-avoid">
                   <h3 className="text-sm sm:text-base font-bold text-emerald-400 flex items-center gap-2 print:text-black">
                     <Building2 className="h-4 w-4 shrink-0 text-emerald-400 print:text-black" />
                     <span>{group.unitProcess}</span>
@@ -1044,8 +1094,13 @@ export default function ProcurementList() {
                         {group.groupUnits}
                       </strong>
                     </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
+                    <span
+                      aria-hidden="true"
+                      className={!groupHasPower ? 'print:hidden' : ''}
+                    >
+                      ·
+                    </span>
+                    <span className={!groupHasPower ? 'print:hidden' : ''}>
                       Tổng P:{' '}
                       <strong className="text-amber-300 print:text-black">
                         {group.groupPowerKw.toFixed(2)} kW
@@ -1066,16 +1121,28 @@ export default function ProcurementList() {
                             Thiết bị & Thông số kỹ thuật
                           </th>
                           <th className="py-3 px-4 font-semibold">Hãng SX</th>
-                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                          <th
+                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
+                              !groupHasPower ? 'print:hidden' : ''
+                            }`}
+                          >
                             P đơn vị (kW)
                           </th>
                           <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
                             Số lượng
                           </th>
-                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                          <th
+                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
+                              !groupHasPower ? 'print:hidden' : ''
+                            }`}
+                          >
                             Tổng P (kW)
                           </th>
-                          <th className="py-3 px-4 font-semibold min-w-[180px]">
+                          <th
+                            className={`py-3 px-4 font-semibold min-w-[180px] ${
+                              !showPrintNotes ? 'print:hidden' : ''
+                            }`}
+                          >
                             Ghi chú mua sắm
                           </th>
                           <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
@@ -1106,7 +1173,11 @@ export default function ProcurementList() {
                                 <div className="font-semibold text-slate-100 print:text-black">
                                   {item.name}
                                 </div>
-                                <div className="mt-0.5 text-xs text-slate-400 print:text-gray-700">
+                                <div
+                                  className={`mt-0.5 text-xs text-slate-400 print:text-gray-700 ${
+                                    !showPrintNotes ? 'print:hidden' : ''
+                                  }`}
+                                >
                                   {item.specs || 'Chưa có mô tả thông số'}
                                 </div>
                               </td>
@@ -1115,7 +1186,11 @@ export default function ProcurementList() {
                                 {item.brand || '—'}
                               </td>
 
-                              <td className="py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black">
+                              <td
+                                className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 {Number(item.power || 0).toFixed(2)}
                               </td>
 
@@ -1143,11 +1218,19 @@ export default function ProcurementList() {
                                 </span>
                               </td>
 
-                              <td className="py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black">
+                              <td
+                                className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 {rowPowerKw.toFixed(2)} kW
                               </td>
 
-                              <td className="py-3 px-4 align-middle">
+                              <td
+                                className={`py-3 px-4 align-middle ${
+                                  !showPrintNotes ? 'print:hidden' : ''
+                                }`}
+                              >
                                 <input
                                   type="text"
                                   value={item.note}
@@ -1264,7 +1347,7 @@ export default function ProcurementList() {
                                     {item.brand || '—'}
                                   </span>
                                 </div>
-                                <div>
+                                <div className={!showPrintNotes ? 'print:hidden' : ''}>
                                   <span className="text-slate-500 print:text-gray-600">
                                     Thông số:{' '}
                                   </span>
@@ -1273,7 +1356,7 @@ export default function ProcurementList() {
                                   </span>
                                 </div>
                                 <div className="flex items-center justify-between gap-2 pt-0.5">
-                                  <span>
+                                  <span className={!groupHasPower ? 'print:hidden' : ''}>
                                     <span className="text-slate-500 print:text-gray-600">
                                       P đơn vị:{' '}
                                     </span>
@@ -1316,7 +1399,11 @@ export default function ProcurementList() {
                                   </span>
                                 </div>
 
-                                <div className="col-span-2">
+                                <div
+                                  className={`col-span-2 ${
+                                    !showPrintNotes ? 'print:hidden' : ''
+                                  }`}
+                                >
                                   <label
                                     htmlFor={`bom-note-${item.bomId}`}
                                     className="block text-[11px] text-slate-400 mb-1 print:text-gray-700"
@@ -1342,7 +1429,11 @@ export default function ProcurementList() {
                                 </div>
                               </div>
 
-                              <div className="flex items-center justify-between text-xs pt-1">
+                              <div
+                                className={`flex items-center justify-between text-xs pt-1 ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 <span className="text-slate-400 print:text-gray-700">
                                   Tổng công suất mục này:
                                 </span>
@@ -1358,17 +1449,22 @@ export default function ProcurementList() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {/* Grand Total Summary (Detailed) */}
-            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
+            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black print:break-inside-avoid">
               <span>
                 Tổng cộng chi tiết theo công trình (
                 {detailedGroupedByProcess.length} hạng mục ·{' '}
                 {filteredDetailedItems.length} dòng vật tư ·{' '}
                 {totals.totalUnits} thiết bị)
               </span>
-              <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
+              <span
+                className={`font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black ${
+                  !hasAnyDetailedPower ? 'print:hidden' : ''
+                }`}
+              >
                 {totals.totalPowerKw.toFixed(2)} kW
               </span>
             </div>
@@ -1376,13 +1472,17 @@ export default function ProcurementList() {
         ) : (
           <>
             {/* Consolidated Mode Grouped by Category (Read-only) */}
-            {consolidatedGroupedByCategory.map((group) => (
+            {consolidatedGroupedByCategory.map((group) => {
+              const groupHasPower = group.items.some(
+                (item) => Number(item.power) > 0
+              );
+              return (
               <div
                 key={group.category}
                 className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
               >
                 {/* Category Header */}
-                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 py-3.5 bg-slate-900/95 border-b border-slate-700/80 rounded-t-xl print:bg-gray-100 print:border-gray-300 print:break-inside-avoid">
                   <h3 className="text-sm sm:text-base font-bold text-sky-400 flex items-center gap-2 print:text-black">
                     <Layers className="h-4 w-4 shrink-0 text-sky-400 print:text-black" />
                     <span>{group.category}</span>
@@ -1398,8 +1498,13 @@ export default function ProcurementList() {
                         {group.groupUnits}
                       </strong>
                     </span>
-                    <span aria-hidden="true">·</span>
-                    <span>
+                    <span
+                      aria-hidden="true"
+                      className={!groupHasPower ? 'print:hidden' : ''}
+                    >
+                      ·
+                    </span>
+                    <span className={!groupHasPower ? 'print:hidden' : ''}>
                       Tổng P:{' '}
                       <strong className="text-amber-300 print:text-black">
                         {group.groupPowerKw.toFixed(2)} kW
@@ -1420,16 +1525,28 @@ export default function ProcurementList() {
                             Thiết bị, Thông số & Phân bổ
                           </th>
                           <th className="py-3 px-4 font-semibold">Hãng SX</th>
-                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                          <th
+                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
+                              !groupHasPower ? 'print:hidden' : ''
+                            }`}
+                          >
                             P đơn vị (kW)
                           </th>
                           <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
                             Số lượng
                           </th>
-                          <th className="py-3 px-4 font-semibold text-right whitespace-nowrap">
+                          <th
+                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
+                              !groupHasPower ? 'print:hidden' : ''
+                            }`}
+                          >
                             Tổng P (kW)
                           </th>
-                          <th className="py-3 px-4 font-semibold min-w-[180px]">
+                          <th
+                            className={`py-3 px-4 font-semibold min-w-[180px] ${
+                              !showPrintNotes ? 'print:hidden' : ''
+                            }`}
+                          >
                             Ghi chú tổng hợp
                           </th>
                         </tr>
@@ -1457,11 +1574,19 @@ export default function ProcurementList() {
                                 <div className="font-semibold text-slate-100 print:text-black">
                                   {item.name}
                                 </div>
-                                <div className="mt-0.5 text-xs text-slate-400 print:text-gray-700">
+                                <div
+                                  className={`mt-0.5 text-xs text-slate-400 print:text-gray-700 ${
+                                    !showPrintNotes ? 'print:hidden' : ''
+                                  }`}
+                                >
                                   {item.specs || 'Chưa có mô tả thông số'}
                                 </div>
                                 {item.unitProcessSummary && (
-                                  <div className="mt-1 text-[11px] text-emerald-400/90 print:text-gray-700">
+                                  <div
+                                    className={`mt-1 text-[11px] text-emerald-400/90 print:text-gray-700 ${
+                                      !showPrintNotes ? 'print:hidden' : ''
+                                    }`}
+                                  >
                                     Phân bổ: {item.unitProcessSummary}
                                   </div>
                                 )}
@@ -1471,7 +1596,11 @@ export default function ProcurementList() {
                                 {item.brand || '—'}
                               </td>
 
-                              <td className="py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black">
+                              <td
+                                className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 {Number(item.power || 0).toFixed(2)}
                               </td>
 
@@ -1484,11 +1613,19 @@ export default function ProcurementList() {
                                 </span>
                               </td>
 
-                              <td className="py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black">
+                              <td
+                                className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 {rowPowerKw.toFixed(2)} kW
                               </td>
 
-                              <td className="py-3 px-4 align-middle text-xs text-slate-300 print:text-black">
+                              <td
+                                className={`py-3 px-4 align-middle text-xs text-slate-300 print:text-black ${
+                                  !showPrintNotes ? 'print:hidden' : ''
+                                }`}
+                              >
                                 {item.note || '—'}
                               </td>
                             </tr>
@@ -1539,7 +1676,7 @@ export default function ProcurementList() {
                                     {item.brand || '—'}
                                   </span>
                                 </div>
-                                <div>
+                                <div className={!showPrintNotes ? 'print:hidden' : ''}>
                                   <span className="text-slate-500 print:text-gray-600">
                                     Thông số:{' '}
                                   </span>
@@ -1548,7 +1685,11 @@ export default function ProcurementList() {
                                   </span>
                                 </div>
                                 {item.unitProcessSummary && (
-                                  <div className="text-[11px] text-emerald-400/90 print:text-gray-700">
+                                  <div
+                                    className={`text-[11px] text-emerald-400/90 print:text-gray-700 ${
+                                      !showPrintNotes ? 'print:hidden' : ''
+                                    }`}
+                                  >
                                     <span className="text-slate-500 print:text-gray-600">
                                       Phân bổ công trình:{' '}
                                     </span>
@@ -1556,7 +1697,7 @@ export default function ProcurementList() {
                                   </div>
                                 )}
                                 <div className="flex items-center justify-between gap-2 pt-0.5">
-                                  <span>
+                                  <span className={!groupHasPower ? 'print:hidden' : ''}>
                                     <span className="text-slate-500 print:text-gray-600">
                                       P đơn vị:{' '}
                                     </span>
@@ -1571,8 +1712,16 @@ export default function ProcurementList() {
                               </div>
                             </div>
 
-                            <div className="pt-3 border-t border-slate-800 space-y-2 print:border-gray-300">
-                              <div className="text-xs">
+                            <div
+                              className={`pt-3 border-t border-slate-800 space-y-2 print:border-gray-300 ${
+                                !showPrintNotes && !groupHasPower ? 'print:hidden' : ''
+                              }`}
+                            >
+                              <div
+                                className={`text-xs ${
+                                  !showPrintNotes ? 'print:hidden' : ''
+                                }`}
+                              >
                                 <span className="text-slate-500 print:text-gray-700">
                                   Ghi chú tổng hợp:{' '}
                                 </span>
@@ -1581,7 +1730,11 @@ export default function ProcurementList() {
                                 </span>
                               </div>
 
-                              <div className="flex items-center justify-between text-xs">
+                              <div
+                                className={`flex items-center justify-between text-xs ${
+                                  !groupHasPower ? 'print:hidden' : ''
+                                }`}
+                              >
                                 <span className="text-slate-400 print:text-gray-700">
                                   Tổng công suất mục này:
                                 </span>
@@ -1597,17 +1750,22 @@ export default function ProcurementList() {
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
 
             {/* Grand Total Summary (Consolidated) */}
-            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black">
+            <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black print:break-inside-avoid">
               <span>
                 Tổng hợp toàn danh mục mua sắm (
                 {consolidatedGroupedByCategory.length} nhóm vật tư ·{' '}
                 {filteredConsolidatedItems.length} chủng loại ·{' '}
                 {totals.totalUnits} thiết bị)
               </span>
-              <span className="font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black">
+              <span
+                className={`font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black ${
+                  !hasAnyConsolidatedPower ? 'print:hidden' : ''
+                }`}
+              >
                 {totals.totalPowerKw.toFixed(2)} kW
               </span>
             </div>
@@ -1621,29 +1779,33 @@ export default function ProcurementList() {
           role="dialog"
           aria-modal="true"
           aria-labelledby="bom-selector-title"
-          className="print:hidden fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs"
+          onClick={closeModal}
+          className="print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
-          <div className="w-full max-w-4xl max-h-[90dvh] flex flex-col rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl overflow-hidden">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-4xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-800 shrink-0">
-              <div>
+            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
+              <div className="min-w-0">
                 <h2
                   id="bom-selector-title"
-                  className="text-base font-bold text-slate-100 flex items-center gap-2"
+                  className="text-base font-bold text-slate-100 flex items-center gap-2 truncate"
                 >
-                  <Package className="h-5 w-5 text-emerald-400" />
-                  <span>
+                  <Package className="h-5 w-5 text-emerald-400 shrink-0" />
+                  <span className="truncate">
                     {editingBomId
                       ? 'Cập nhật Thiết bị trong Danh mục Mua sắm (BOM)'
                       : 'Chọn Thiết bị vào Danh mục Mua sắm (BOM)'}
                   </span>
                 </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
+                <p className="text-xs text-slate-400 mt-0.5 truncate">
                   Dữ liệu lấy từ Kho Thiết bị chuẩn ({catalog.length} thiết bị
                   sẵn có)
                 </p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <Link
                   to="/kho-thiet-bi"
                   onClick={closeModal}
@@ -1664,7 +1826,7 @@ export default function ProcurementList() {
             </div>
 
             {/* Modal Search, Filter & View Toggle */}
-            <div className="p-4 sm:p-5 space-y-3 border-b border-slate-800 shrink-0">
+            <div className="p-3.5 sm:p-5 space-y-2.5 sm:space-y-3 border-b border-slate-800 shrink-0">
               <div className="flex flex-col sm:flex-row gap-2.5">
                 <div className="relative w-full flex-1">
                   <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -1688,59 +1850,61 @@ export default function ProcurementList() {
                   )}
                 </div>
 
-                <select
-                  value={modalCategory}
-                  onChange={(e) => setModalCategory(e.target.value)}
-                  aria-label="Lọc nhóm thiết bị"
-                  className="sm:w-48 min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                >
-                  {modalCategories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={modalCategory}
+                    onChange={(e) => setModalCategory(e.target.value)}
+                    aria-label="Lọc nhóm thiết bị"
+                    className="flex-1 sm:w-48 min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                  >
+                    {modalCategories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
 
-                {/* Modal View Toggle Buttons */}
-                <div
-                  role="group"
-                  aria-label="Chuyển đổi chế độ xem kho thiết bị"
-                  className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg bg-slate-800 border border-slate-700 p-1 shrink-0"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setModalViewMode('table')}
-                    aria-pressed={modalViewMode === 'table'}
-                    title="Xem dạng Bảng (Table)"
-                    className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[32px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      modalViewMode === 'table'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/70'
-                    }`}
+                  {/* Modal View Toggle Buttons */}
+                  <div
+                    role="group"
+                    aria-label="Chuyển đổi chế độ xem kho thiết bị"
+                    className="inline-flex items-center gap-1 rounded-lg bg-slate-800 border border-slate-700 p-1 shrink-0"
                   >
-                    <List className="h-4 w-4 pointer-events-none shrink-0" />
-                    <span className="pointer-events-none">Bảng</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setModalViewMode('grid')}
-                    aria-pressed={modalViewMode === 'grid'}
-                    title="Xem dạng Thẻ lưới (Grid)"
-                    className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[32px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
-                      modalViewMode === 'grid'
-                        ? 'bg-emerald-600 text-white shadow-xs'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/70'
-                    }`}
-                  >
-                    <LayoutGrid className="h-4 w-4 pointer-events-none shrink-0" />
-                    <span className="pointer-events-none">Thẻ</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('table')}
+                      aria-pressed={modalViewMode === 'table'}
+                      title="Xem dạng Bảng (Table)"
+                      className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[32px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                        modalViewMode === 'table'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/70'
+                      }`}
+                    >
+                      <List className="h-4 w-4 pointer-events-none shrink-0" />
+                      <span className="pointer-events-none">Bảng</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModalViewMode('grid')}
+                      aria-pressed={modalViewMode === 'grid'}
+                      title="Xem dạng Thẻ lưới (Grid)"
+                      className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[32px] px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
+                        modalViewMode === 'grid'
+                          ? 'bg-emerald-600 text-white shadow-xs'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/70'
+                      }`}
+                    >
+                      <LayoutGrid className="h-4 w-4 pointer-events-none shrink-0" />
+                      <span className="pointer-events-none">Thẻ</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
 
             {/* Scrollable Catalog List */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-5 pb-24">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5">
               {filteredCatalog.length === 0 ? (
                 <div className="py-8 text-center text-sm text-slate-400">
                   Không tìm thấy thiết bị nào trong kho phù hợp từ khóa.
@@ -1910,13 +2074,13 @@ export default function ProcurementList() {
               )}
             </div>
 
-            {/* Modal Footer: Unit Process, Quantity, Note & Submit */}
+            {/* Sticky Modal Footer: Unit Process, Quantity, Note & Submit */}
             <form
               onSubmit={handleSaveModal}
-              className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/80 space-y-3 shrink-0"
+              className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 space-y-2.5 shrink-0"
             >
               {pickedEquipment && (
-                <div className="rounded-lg bg-emerald-950/35 border border-emerald-500/30 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <div className="rounded-lg bg-emerald-950/35 border border-emerald-500/30 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
                   <div className="min-w-0">
                     <span className="text-slate-400">Thiết bị đang chọn: </span>
                     <strong className="text-emerald-300">
@@ -1939,7 +2103,7 @@ export default function ProcurementList() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 sm:gap-3 items-end">
                 <div className="sm:col-span-4">
                   <label
                     htmlFor="bom-modal-unit-process"
@@ -1967,40 +2131,42 @@ export default function ProcurementList() {
                   </datalist>
                 </div>
 
-                <div className="sm:col-span-2">
-                  <label
-                    htmlFor="bom-modal-qty"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Số lượng <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    id="bom-modal-qty"
-                    type="text"
-                    inputMode="numeric"
-                    value={quantityInput}
-                    onChange={(e) =>
-                      setQuantityInput(sanitizeIntInput(e.target.value))
-                    }
-                    className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+                <div className="grid grid-cols-3 sm:contents gap-2.5">
+                  <div className="col-span-1 sm:col-span-2">
+                    <label
+                      htmlFor="bom-modal-qty"
+                      className="block text-xs font-medium text-slate-300 mb-1"
+                    >
+                      Số lượng <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="bom-modal-qty"
+                      type="text"
+                      inputMode="numeric"
+                      value={quantityInput}
+                      onChange={(e) =>
+                        setQuantityInput(sanitizeIntInput(e.target.value))
+                      }
+                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
 
-                <div className="sm:col-span-3">
-                  <label
-                    htmlFor="bom-modal-note"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Ghi chú (tùy chọn)
-                  </label>
-                  <input
-                    id="bom-modal-note"
-                    type="text"
-                    value={noteInput}
-                    onChange={(e) => setNoteInput(e.target.value)}
-                    placeholder="VD: Mua gấp, Chờ duyệt..."
-                    className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
+                  <div className="col-span-2 sm:col-span-3">
+                    <label
+                      htmlFor="bom-modal-note"
+                      className="block text-xs font-medium text-slate-300 mb-1"
+                    >
+                      Ghi chú (tùy chọn)
+                    </label>
+                    <input
+                      id="bom-modal-note"
+                      type="text"
+                      value={noteInput}
+                      onChange={(e) => setNoteInput(e.target.value)}
+                      placeholder="VD: Mua gấp, Chờ duyệt..."
+                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div className="sm:col-span-3 flex items-center justify-end gap-2">
@@ -2023,7 +2189,7 @@ export default function ProcurementList() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="hidden sm:flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] text-slate-500 mr-1">
                   Gợi ý nhanh:
                 </span>

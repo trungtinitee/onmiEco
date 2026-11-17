@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { LOGO_BASE64 } from '../constants/branding';
 import { useAppContext } from '../context/AppContext';
 
 const getLogStorageKey = (projectId) =>
@@ -166,7 +167,8 @@ function loadLogsFromStorage(storageKey) {
 }
 
 export default function DailyOperationLog() {
-  const { globalQ, currentProject } = useAppContext();
+  const { globalQ, currentProject, printOptions, openPrintModal } =
+    useAppContext();
   const logStorageKey = getLogStorageKey(currentProject?.id);
 
   // --- Cấu hình URL Google Sheets động ---
@@ -222,6 +224,7 @@ export default function DailyOperationLog() {
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
   const [toast, setToast] = useState(null); // { ok: boolean, message: string }
   const [guideOpen, setGuideOpen] = useState(false);
+  const [logToDelete, setLogToDelete] = useState(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [viewMode, setViewMode] = useState('table');
 
@@ -232,21 +235,26 @@ export default function DailyOperationLog() {
       items: loadLogsFromStorage(logStorageKey),
     });
     setEditingId(null);
+    setLogToDelete(null);
     setFlowTouched(false);
     setForm(createDefaultForm(globalQ));
   }, [logStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Đóng Modal hướng dẫn bằng phím Escape
+  // Đóng Modal bằng phím Escape
   useEffect(() => {
-    if (!guideOpen) return;
+    if (!guideOpen && !logToDelete) return;
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') {
-        setGuideOpen(false);
+        if (logToDelete) {
+          setLogToDelete(null);
+        } else {
+          setGuideOpen(false);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [guideOpen]);
+  }, [guideOpen, logToDelete]);
 
   // Chỉ ghi localStorage khi logsState.key khớp đúng logStorageKey hiện hành (tránh ghi đè chéo dự án)
   useEffect(() => {
@@ -701,45 +709,95 @@ export default function DailyOperationLog() {
   };
 
   const handleDelete = (entry) => {
-    const formattedDate = formatDateTimeDisplay(entry.shiftDateTime);
-    const confirmed = window.confirm(
-      `Bạn có chắc chắn muốn xóa nhật ký ngày ${formattedDate} không?`
-    );
-    if (!confirmed) return;
+    setLogToDelete(entry);
+  };
 
-    setLogs((prev) => prev.filter((item) => item.id !== entry.id));
-    if (editingId === entry.id) {
+  const handleConfirmDeleteLog = () => {
+    if (!logToDelete) return;
+    const target = logToDelete;
+    const formattedDate = formatDateTimeDisplay(target.shiftDateTime);
+    setLogs((prev) => prev.filter((item) => item.id !== target.id));
+    if (editingId === target.id) {
       handleResetForm();
     }
+    setLogToDelete(null);
     showToast(true, `Đã xóa nhật ký ca trực ngày ${formattedDate}.`);
   };
 
   const handlePrintLogs = () => {
-    window.print();
+    openPrintModal('Nhật Ký Vận Hành Trạm Xử Lý Nước Thải');
   };
+
+  const showPrintCompany = Boolean(printOptions?.showCompanyHeader);
+  const showPrintProject = Boolean(printOptions?.showProjectInfo);
+  const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
 
   const isUrlConfigured = isValidHttpUrl(savedGsheetUrl);
 
   return (
     <div className="space-y-6 pb-24 print:pb-0 print-log-sheet">
-      {/* Thiết lập trang in A4 nằm ngang riêng cho Nhật ký vận hành */}
-      <style>{`@media print { @page { size: landscape; margin: 10mm; } }`}</style>
+      {/* Thiết lập trang in A4 nằm ngang với lề chuẩn 15mm cho Nhật ký vận hành */}
+      <style>{`@media print { @page { size: A4 landscape; margin: 15mm; } }`}</style>
 
       {/* Tiêu đề chỉ hiển thị khi In (Print-to-PDF / A4 Landscape) */}
-      <div className="hidden print:block bg-white text-black pb-3 mb-4 border-b-2 border-black">
+      <div className="hidden print:block bg-white text-black pb-3 mb-4 border-b-2 border-black space-y-2.5">
+        {showPrintCompany && (
+          <div className="flex items-center justify-between gap-4 pb-2 border-b border-gray-300">
+            <div className="flex items-center gap-2.5">
+              <div className="print-logo-badge inline-flex items-center rounded-lg bg-slate-900 px-2.5 py-1">
+                <img
+                  src={LOGO_BASE64}
+                  alt="omniEco Logo"
+                  className="h-7 w-auto object-contain"
+                />
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wide text-black">
+                  CÔNG TY TNHH TƯ VẤN - ĐẦU TƯ MÔI TRƯỜNG D-V-N
+                </div>
+                <div className="text-[11px] text-gray-700">
+                  Hệ thống Kỹ thuật Môi trường &amp; Cơ điện omniEco
+                </div>
+              </div>
+            </div>
+            <div className="text-right text-[11px] text-gray-700">
+              Ngày in: {new Date().toLocaleDateString('vi-VN')}
+            </div>
+          </div>
+        )}
+
         <h1 className="text-center text-xl font-bold uppercase tracking-wide text-black">
           NHẬT KÝ VẬN HÀNH TRẠM XỬ LÝ NƯỚC THẢI
         </h1>
-        <div className="mt-1.5 flex items-center justify-between text-xs text-black">
-          <span>
-            Dự án: <strong>{currentProject?.name}</strong> · Tổng số ca ghi nhận:{' '}
-            {sortedLogs.length} ca
-          </span>
-          <span>
-            Ngày in: {new Date().toLocaleDateString('vi-VN')} · Lưu lượng thiết
-            kế Q = {Number(globalQ || 0).toLocaleString('vi-VN')} m³/ngày
-          </span>
-        </div>
+
+        {showPrintProject && (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs text-black pt-1">
+            <span>
+              Dự án: <strong>{currentProject?.name || 'Dự án mặc định'}</strong>
+              {currentProject?.investor
+                ? ` · Chủ đầu tư: ${currentProject.investor}`
+                : ''}
+              {currentProject?.location
+                ? ` · Địa điểm: ${currentProject.location}`
+                : ''}
+            </span>
+            <span>
+              Công suất:{' '}
+              <strong>
+                {currentProject?.capacity ||
+                  `${Number(globalQ || 0).toLocaleString('vi-VN')} m³/ngày`}
+              </strong>{' '}
+              · Tổng số ca: {sortedLogs.length} ca
+            </span>
+          </div>
+        )}
+
+        {showPrintProject && showPrintNotes && currentProject?.notes && (
+          <div className="text-[11px] text-gray-800">
+            <strong className="text-black">Ghi chú dự án: </strong>
+            {currentProject.notes}
+          </div>
+        )}
       </div>
 
       {/* 1. KHU VỰC CẤU HÌNH ĐỒNG BỘ GOOGLE SHEETS (Accordion, ẩn khi In) */}
@@ -1231,7 +1289,11 @@ export default function DailyOperationLog() {
                 <th className="py-3 px-3 border-r border-slate-700/60 print:border-black">
                   Hóa chất tiêu thụ
                 </th>
-                <th className="py-3 px-3 border-r border-slate-700/60 print:border-black">
+                <th
+                  className={`py-3 px-3 border-r border-slate-700/60 print:border-black ${
+                    !showPrintNotes ? 'print:hidden' : ''
+                  }`}
+                >
                   Sự cố / Ghi chú
                 </th>
                 <th className="py-3 px-3 border-r border-slate-700/60 print:border-black">
@@ -1316,7 +1378,11 @@ export default function DailyOperationLog() {
                           </div>
                         </div>
                       </td>
-                      <td className="py-3 px-3 text-xs text-slate-300 max-w-xs border-r border-slate-700/50 print:text-black print:border-black">
+                      <td
+                        className={`py-3 px-3 text-xs text-slate-300 max-w-xs border-r border-slate-700/50 print:text-black print:border-black ${
+                          !showPrintNotes ? 'print:hidden' : ''
+                        }`}
+                      >
                         {row.notes || 'Bình thường'}
                       </td>
                       <td className="py-3 px-3 text-sm font-medium text-slate-100 whitespace-nowrap border-r border-slate-700/50 print:text-black print:border-black">
@@ -1536,14 +1602,14 @@ export default function DailyOperationLog() {
           aria-modal="true"
           aria-labelledby="gsheet-guide-title"
           onClick={() => setGuideOpen(false)}
-          className="no-print print:hidden fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-sm"
+          className="no-print print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl bg-slate-800 border border-slate-700 text-slate-200 shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-3xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl text-slate-200 shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
-            <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-slate-700 bg-slate-900/60 shrink-0">
+            <div className="flex items-center justify-between gap-4 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 bg-slate-900/60 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <HelpCircle className="h-5 w-5 text-sky-400 shrink-0" />
                 <h2
@@ -1557,7 +1623,7 @@ export default function DailyOperationLog() {
                 type="button"
                 onClick={() => setGuideOpen(false)}
                 aria-label="Đóng hướng dẫn"
-                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-700 hover:text-white text-xs font-semibold transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] min-w-[44px] px-3 rounded-lg border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white text-xs font-semibold transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 <X className="h-4 w-4" />
                 <span className="hidden sm:inline">Đóng</span>
@@ -1565,7 +1631,7 @@ export default function DailyOperationLog() {
             </div>
 
             {/* Modal Body (cuộn dọc trên thiết bị nhỏ) */}
-            <div className="overflow-y-auto p-5 sm:p-6 pb-24 space-y-5 text-sm leading-relaxed text-slate-200">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 space-y-5 text-sm leading-relaxed text-slate-200">
               {/* Bước 1 */}
               <div className="rounded-xl bg-slate-900/70 border border-slate-700/80 p-4 space-y-2">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-sky-300">
@@ -1692,13 +1758,75 @@ export default function DailyOperationLog() {
             </div>
 
             {/* Modal Footer */}
-            <div className="flex items-center justify-end px-5 py-3.5 border-t border-slate-700 bg-slate-900/60 shrink-0">
+            <div className="sticky bottom-0 z-20 flex items-center justify-end bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
               <button
                 type="button"
                 onClick={() => setGuideOpen(false)}
                 className="inline-flex items-center justify-center gap-2 min-h-[44px] px-5 py-2.5 rounded-lg bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-sky-200 font-semibold text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
               >
                 <span>Đã hiểu, quay lại dán URL</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Xác nhận Xóa Nhật ký Ca trực */}
+      {logToDelete && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-log-title"
+          onClick={() => setLogToDelete(null)}
+          className="no-print print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+          >
+            <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
+              <h3
+                id="delete-log-title"
+                className="text-base font-bold text-red-400 flex items-center gap-2"
+              >
+                <AlertTriangle className="h-5 w-5 shrink-0" />
+                <span>Xác nhận xóa nhật ký</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setLogToDelete(null)}
+                aria-label="Đóng cửa sổ"
+                className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
+              >
+                <X className="h-5 w-5 pointer-events-none" />
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-5 space-y-4">
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Bạn có chắc chắn muốn xóa nhật ký ca trực ngày{' '}
+                <strong className="text-white">
+                  {formatDateTimeDisplay(logToDelete.shiftDateTime)}
+                </strong>{' '}
+                không?
+              </p>
+            </div>
+
+            <div className="sticky bottom-0 z-20 flex items-center justify-end gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
+              <button
+                type="button"
+                onClick={() => setLogToDelete(null)}
+                className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
+              >
+                <span className="pointer-events-none">Hủy</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteLog}
+                className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[40px] px-4 py-2 rounded-lg bg-red-600 hover:bg-red-500 text-sm font-semibold text-white"
+              >
+                <Trash2 className="h-4 w-4 pointer-events-none shrink-0" />
+                <span className="pointer-events-none">Xóa nhật ký</span>
               </button>
             </div>
           </div>

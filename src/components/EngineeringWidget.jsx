@@ -536,11 +536,11 @@ const EngineeringWidget = memo(function EngineeringWidget({
       aria-modal="true"
       aria-labelledby="engineering-widget-title"
       onClick={onClose}
-      className="no-print print:hidden fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6 bg-slate-950/75 backdrop-blur-sm"
+      className="no-print print:hidden fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
     >
       <div
         onClick={handleStopPropagation}
-        className="w-full max-w-lg rounded-xl bg-slate-900 border border-slate-700 text-slate-100 shadow-2xl overflow-hidden flex flex-col max-h-[90dvh]"
+        className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl text-slate-100 shadow-2xl overflow-hidden"
       >
         {/* Modal Header */}
         <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 border-b border-slate-800 shrink-0">
@@ -612,7 +612,7 @@ const EngineeringWidget = memo(function EngineeringWidget({
         </div>
 
         {/* Tab Body */}
-        <div className="p-4 sm:p-5 overflow-y-auto overflow-x-hidden">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain overflow-x-hidden p-4 sm:p-5">
           {activeTab === 'calc' ? (
             <div className="space-y-4">
               {/* Màn hình hiển thị kết quả */}
@@ -680,6 +680,17 @@ const EngineeringWidget = memo(function EngineeringWidget({
           ) : (
             <UnitConverterPanel />
           )}
+        </div>
+
+        {/* Mobile sticky close bar */}
+        <div className="sm:hidden sticky bottom-0 z-20 flex items-center justify-end bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-200"
+          >
+            Đóng tiện ích
+          </button>
         </div>
       </div>
     </div>

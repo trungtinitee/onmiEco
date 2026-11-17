@@ -31,8 +31,8 @@
 /* Chế độ In Báo Cáo Kỹ Thuật (Print to PDF) */
 @media print {
   @page {
-    size: A4;
-    margin: 12mm;
+    size: A4 portrait;
+    margin: 15mm;
   }
 
   :root {
@@ -43,15 +43,17 @@
   body {
     background: #ffffff !important;
     background-color: #ffffff !important;
-    color: #111827 !important;
+    color: #000000 !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   aside,
   header:not(.print\:block),
+  nav,
   .no-print,
   [role="tablist"],
+  [role="dialog"],
   main button {
     display: none !important;
   }
@@ -72,31 +74,31 @@
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
-    color: #111827 !important;
+    color: #000000 !important;
   }
 
   /* Zero-specificity fallback colors for dark-mode Tailwind classes inside main so print: classes win */
   :where(main) :where(.text-slate-100, .text-slate-200) {
-    color: #111827;
+    color: #000000;
   }
 
   :where(main) :where(.text-slate-300, .text-slate-400) {
-    color: #374151;
+    color: #1f2937;
   }
 
   :where(main) :where(.bg-slate-900, .bg-slate-900\/90, .bg-slate-900\/80, .bg-slate-900\/60, .bg-slate-900\/50, .bg-slate-900\/40) {
-    background-color: #f9fafb;
+    background-color: #ffffff;
   }
 
   :where(main) :where(.border-slate-700, .border-slate-700\/80, .border-slate-700\/70, .border-slate-700\/60, .border-slate-800) {
-    border-color: #d1d5db;
+    border-color: #cbd5e1;
   }
 
   main input,
   main select,
   main textarea {
     background-color: #ffffff !important;
-    color: #111827 !important;
+    color: #000000 !important;
     border: 1px solid #9ca3af !important;
   }
 
@@ -127,19 +129,40 @@
     color: #047857 !important;
   }
 
-  /* Mở rộng bảng không bị cắt ngang khi in PDF */
+  /* Mở rộng bảng không bị cắt ngang và định dạng bảng rõ nét nền trắng chữ đen khi in */
   .overflow-x-auto {
     overflow: visible !important;
   }
 
-  table {
+  main table {
     width: 100% !important;
     min-width: 0 !important;
     border-collapse: collapse !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
     page-break-inside: auto;
   }
 
-  tr {
+  main table thead {
+    display: table-header-group;
+  }
+
+  main table th,
+  main table td {
+    border: 1px solid #cbd5e1 !important;
+    color: #000000 !important;
+    background-color: #ffffff !important;
+  }
+
+  main table thead th {
+    background-color: #f3f4f6 !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+  }
+
+  tr,
+  article,
+  .print-avoid-break {
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -148,5 +171,10 @@
   .print-log-sheet .text-emerald-500,
   .print-log-sheet .text-emerald-400 {
     color: #000000 !important;
+  }
+
+  .print-hide-notes section p.italic,
+  .print-hide-notes .print-detail-note {
+    display: none !important;
   }
 }

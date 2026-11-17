@@ -3,10 +3,12 @@ import { useLocation } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, X } from 'lucide-react';
 import Header from './Header';
 import PrintHeader from './PrintHeader';
+import PrintSignatureFooter from './PrintSignatureFooter';
+import PrintCustomizationModal from './PrintCustomizationModal';
 import Sidebar, { NAV_ITEMS } from './Sidebar';
 import FloatingToolMenu from './FloatingToolMenu';
 import EngineeringWidget from './EngineeringWidget';
-import { useAppActions } from '../context/AppContext';
+import { useAppActions, useAppContext } from '../context/AppContext';
 
 /**
  * Cô lập toàn bộ state của Trạm tiện ích nổi (FloatingToolMenu & EngineeringWidget).
@@ -51,11 +53,17 @@ const MainViewport = memo(function MainViewport({
   routeLabel,
   children,
 }) {
+  const { printOptions } = useAppContext();
+  const hideNotesClass = printOptions?.showDetailedNotes ? '' : 'print-hide-notes';
+
   return (
-    <main className="flex-1 w-full px-4 pt-5 pb-24 md:px-8 md:py-8 md:pb-24 print:bg-white print:text-black print:p-0 print:m-0">
+    <main
+      className={`flex-1 w-full px-4 pt-5 pb-24 md:px-8 md:py-8 md:pb-24 print:bg-white print:text-black print:p-0 print:m-0 ${hideNotesClass}`}
+    >
       <div className="mx-auto w-full max-w-6xl print:max-w-none print:bg-white print:text-black print:p-0 print:m-0">
         {showPrintHeader && <PrintHeader routeLabel={routeLabel} />}
         {children}
+        <PrintSignatureFooter />
       </div>
     </main>
   );
@@ -66,7 +74,7 @@ export default function Layout({ children }) {
   const [toast, setToast] = useState(null); // { ok, message }
   const toastTimerRef = useRef(null);
 
-  const { resetDefaults } = useAppActions();
+  const { resetDefaults, openPrintModal } = useAppActions();
   const location = useLocation();
 
   const currentRoute = useMemo(
@@ -106,8 +114,8 @@ export default function Layout({ children }) {
   }, []);
 
   const handlePrintPdf = useCallback(() => {
-    window.print();
-  }, []);
+    openPrintModal(currentRoute?.label || 'Báo cáo Kỹ thuật');
+  }, [openPrintModal, currentRoute?.label]);
 
   const handleResetData = useCallback(() => {
     resetDefaults();
@@ -178,6 +186,9 @@ export default function Layout({ children }) {
         onPrintPdf={handlePrintPdf}
         onResetData={handleResetData}
       />
+
+      {/* Modal Cấu hình Tùy chọn In ấn */}
+      <PrintCustomizationModal />
     </div>
   );
 }
