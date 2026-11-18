@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { LOGO_BASE64 } from '../constants/branding';
-import { useAppContext } from '../context/AppContext';
+import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
 
 const getLogStorageKey = (projectId) =>
   `omniEco_Logs_${projectId || 'default-project'}`;
@@ -731,6 +731,8 @@ export default function DailyOperationLog() {
   const showPrintCompany = Boolean(printOptions?.showCompanyHeader);
   const showPrintProject = Boolean(printOptions?.showProjectInfo);
   const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
+  const contractorName =
+    currentProject?.contractor?.trim() || DEFAULT_CONTRACTOR_NAME;
 
   const isUrlConfigured = isValidHttpUrl(savedGsheetUrl);
 
@@ -753,7 +755,7 @@ export default function DailyOperationLog() {
               </div>
               <div>
                 <div className="text-xs font-bold uppercase tracking-wide text-black">
-                  CÔNG TY TNHH TƯ VẤN - ĐẦU TƯ MÔI TRƯỜNG D-V-N
+                  {contractorName}
                 </div>
                 <div className="text-[11px] text-gray-700">
                   Hệ thống Kỹ thuật Môi trường &amp; Cơ điện omniEco

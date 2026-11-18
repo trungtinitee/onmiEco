@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { LOGO_BASE64 } from '../constants/branding';
-import { useAppContext } from '../context/AppContext';
+import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
 
 const PrintHeader = memo(function PrintHeader({ routeLabel }) {
   const { globalQ, currentProject, printOptions } = useAppContext();
@@ -9,12 +9,14 @@ const PrintHeader = memo(function PrintHeader({ routeLabel }) {
   const showCompany = Boolean(printOptions?.showCompanyHeader);
   const showProject = Boolean(printOptions?.showProjectInfo);
   const showNotes = Boolean(printOptions?.showDetailedNotes);
+  const contractorName =
+    currentProject?.contractor?.trim() || DEFAULT_CONTRACTOR_NAME;
 
   return (
     <header className="hidden print:block print:mb-6 print:text-black">
       <div className="space-y-3 pb-3.5 border-b-2 border-gray-800">
         <div className="flex items-start justify-between gap-6">
-          {/* Cột trái: Logo & Tên Công ty TNHH Tư vấn - Đầu tư Môi trường D-V-N */}
+          {/* Cột trái: Logo & Tên Nhà thầu / Đơn vị thực hiện */}
           {showCompany ? (
             <div className="flex items-start gap-3 min-w-0">
               <div className="print-logo-badge inline-flex items-center rounded-lg bg-slate-900 px-2.5 py-1.5 shrink-0">
@@ -26,7 +28,7 @@ const PrintHeader = memo(function PrintHeader({ routeLabel }) {
               </div>
               <div className="min-w-0">
                 <div className="text-xs font-bold uppercase tracking-wide text-black leading-snug">
-                  CÔNG TY TNHH TƯ VẤN - ĐẦU TƯ MÔI TRƯỜNG D-V-N
+                  {contractorName}
                 </div>
                 <p className="text-[11px] text-gray-700 mt-0.5">
                   Hệ thống Kỹ thuật Môi trường &amp; Cơ điện omniEco

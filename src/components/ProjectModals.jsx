@@ -11,7 +11,7 @@ import {
   UserCheck,
   X,
 } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
 
 function formatShortDate(iso) {
   if (!iso) return '';
@@ -52,6 +52,7 @@ const ProjectModals = memo(function ProjectModals({
 
   const [infoForm, setInfoForm] = useState({
     name: '',
+    contractor: '',
     investor: '',
     location: '',
     capacity: '',
@@ -71,6 +72,7 @@ const ProjectModals = memo(function ProjectModals({
     } else if (activeModal === 'info') {
       setInfoForm({
         name: currentProject?.name || '',
+        contractor: currentProject?.contractor ?? DEFAULT_CONTRACTOR_NAME,
         investor: currentProject?.investor || '',
         location: currentProject?.location || '',
         capacity: currentProject?.capacity || '',
@@ -383,6 +385,52 @@ const ProjectModals = memo(function ProjectModals({
 
                 <div>
                   <label
+                    htmlFor="project-info-contractor"
+                    className="block text-xs font-medium text-slate-300 mb-1.5"
+                  >
+                    Tên Nhà thầu / Đơn vị thực hiện
+                  </label>
+                  <input
+                    id="project-info-contractor"
+                    type="text"
+                    value={infoForm.contractor}
+                    onChange={(e) =>
+                      setInfoForm((prev) => ({
+                        ...prev,
+                        contractor: e.target.value,
+                      }))
+                    }
+                    placeholder={DEFAULT_CONTRACTOR_NAME}
+                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                <div>
+                  <label
+                    htmlFor="project-info-location"
+                    className="block text-xs font-medium text-slate-300 mb-1.5"
+                  >
+                    Địa điểm
+                  </label>
+                  <input
+                    id="project-info-location"
+                    type="text"
+                    value={infoForm.location}
+                    onChange={(e) =>
+                      setInfoForm((prev) => ({
+                        ...prev,
+                        location: e.target.value,
+                      }))
+                    }
+                    placeholder="VD: Huyện Long Thành, Tỉnh Đồng Nai"
+                    className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+                  />
+                </div>
+
+                <div>
+                  <label
                     htmlFor="project-info-capacity"
                     className="block text-xs font-medium text-slate-300 mb-1.5"
                   >
@@ -402,28 +450,6 @@ const ProjectModals = memo(function ProjectModals({
                     className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="project-info-location"
-                  className="block text-xs font-medium text-slate-300 mb-1.5"
-                >
-                  Địa điểm
-                </label>
-                <input
-                  id="project-info-location"
-                  type="text"
-                  value={infoForm.location}
-                  onChange={(e) =>
-                    setInfoForm((prev) => ({
-                      ...prev,
-                      location: e.target.value,
-                    }))
-                  }
-                  placeholder="VD: Huyện Long Thành, Tỉnh Đồng Nai"
-                  className="w-full min-h-[42px] rounded-lg bg-slate-800 border border-slate-700 px-3.5 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-                />
               </div>
 
               <div>

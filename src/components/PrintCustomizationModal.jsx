@@ -1,21 +1,29 @@
-import { memo, useCallback, useEffect } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import {
   Building2,
   FileText,
   FolderKanban,
+  Layers,
   PenTool,
   Printer,
   X,
 } from 'lucide-react';
-import { useAppContext } from '../context/AppContext';
+import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
 
 const PRINT_OPTION_ITEMS = [
   {
     key: 'showCompanyHeader',
     label: 'Hiển thị Tiêu đề / Logo Công ty',
     description:
-      'Bao gồm logo omniEco và tên Công ty TNHH Tư vấn - Đầu tư Môi trường D-V-N.',
+      'Bao gồm logo omniEco và tên Nhà thầu / Đơn vị thực hiện ở đầu trang in.',
     icon: Building2,
     iconColor: 'text-emerald-400',
   },
@@ -48,14 +56,51 @@ const PRINT_OPTION_ITEMS = [
 const PrintCustomizationModal = memo(function PrintCustomizationModal() {
   const {
     currentProject,
+    updateProject,
     printOptions,
     printModalState,
+    availableUnitProcesses,
+    selectedUnitProcesses,
+    setSelectedUnitProcesses,
     setPrintOptions,
     closePrintModal,
     confirmAndPrint,
   } = useAppContext();
 
   const isOpen = Boolean(printModalState?.open);
+  const [contractorInput, setContractorInput] = useState(
+    DEFAULT_CONTRACTOR_NAME
+  );
+  const selectAllRef = useRef(null);
+
+  const hasUnitProcessFilter = availableUnitProcesses.length > 0;
+  const selectedUnitProcessSet = useMemo(
+    () => new Set(selectedUnitProcesses),
+    [selectedUnitProcesses]
+  );
+  const selectedCount = useMemo(
+    () =>
+      availableUnitProcesses.filter((proc) => selectedUnitProcessSet.has(proc))
+        .length,
+    [availableUnitProcesses, selectedUnitProcessSet]
+  );
+  const allProcessesSelected =
+    hasUnitProcessFilter && selectedCount === availableUnitProcesses.length;
+  const someProcessesSelected =
+    hasUnitProcessFilter &&
+    selectedCount > 0 &&
+    selectedCount < availableUnitProcesses.length;
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someProcessesSelected;
+    }
+  }, [someProcessesSelected]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setContractorInput(currentProject?.contractor || DEFAULT_CONTRACTOR_NAME);
+  }, [isOpen, currentProject?.id, currentProject?.contractor]);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -77,6 +122,51 @@ const PrintCustomizationModal = memo(function PrintCustomizationModal() {
     },
     [setPrintOptions]
   );
+
+  const handleToggleSelectAllProcesses = useCallback(() => {
+    if (allProcessesSelected) {
+      setSelectedUnitProcesses([]);
+    } else {
+      setSelectedUnitProcesses(availableUnitProcesses);
+    }
+  }, [allProcessesSelected, availableUnitProcesses, setSelectedUnitProcesses]);
+
+  const handleToggleUnitProcess = useCallback(
+    (unitProcess) => {
+      setSelectedUnitProcesses((prev) => {
+        if (prev.includes(unitProcess)) {
+          return prev.filter((item) => item !== unitProcess);
+        }
+        return [...prev, unitProcess];
+      });
+    },
+    [setSelectedUnitProcesses]
+  );
+
+  const isPrintBlockedByEmptyProcess =
+    hasUnitProcessFilter && selectedCount === 0;
+
+  const handleConfirmPrint = useCallback(() => {
+    if (isPrintBlockedByEmptyProcess) return;
+    const resolvedContractor =
+      contractorInput.trim() || DEFAULT_CONTRACTOR_NAME;
+    if (
+      currentProject?.id &&
+      resolvedContractor !== (currentProject?.contractor || '')
+    ) {
+      updateProject(currentProject.id, {
+        name: currentProject.name,
+        contractor: resolvedContractor,
+      });
+    }
+    confirmAndPrint();
+  }, [
+    isPrintBlockedByEmptyProcess,
+    contractorInput,
+    currentProject,
+    updateProject,
+    confirmAndPrint,
+  ]);
 
   if (typeof document === 'undefined' || !isOpen) return null;
 
@@ -168,6 +258,95 @@ const PrintCustomizationModal = memo(function PrintCustomizationModal() {
               );
             })}
           </div>
+          <div className="rounded-xl border border-slate-700/80 bg-slate-800/50 p-3.5 space-y-1.5">
+            <label
+              htmlFor="print-contractor-input"
+              className="flex items-center gap-2 text-xs font-semibold text-slate-200"
+            >
+              <Building2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+              <span>Tên Nhà thầu / Đơn vị thực hiện (áp dụng khi in)</span>
+            </label>
+            <input
+              id="print-contractor-input"
+              type="text"
+              value={contractorInput}
+              onChange={(e) => setContractorInput(e.target.value)}
+              placeholder={DEFAULT_CONTRACTOR_NAME}
+              disabled={!printOptions?.showCompanyHeader}
+              className="w-full min-h-[40px] rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            />
+            <p className="text-[11px] text-slate-400">
+              Tự động nạp từ Thông tin dự án hiện tại. Chỉnh sửa tại đây sẽ cập
+              nhật trực tiếp vào hồ sơ dự án khi in.
+            </p>
+          </div>
+
+          {hasUnitProcessFilter && (
+            <div className="rounded-xl border border-slate-700/80 bg-slate-800/50 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Layers className="h-4 w-4 text-sky-400 shrink-0" />
+                  <h3 className="text-xs sm:text-sm font-semibold text-slate-100 truncate">
+                    Chọn hạng mục cần in
+                  </h3>
+                </div>
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-sky-500/15 text-sky-300 border border-sky-500/30 shrink-0">
+                  {selectedCount}/{availableUnitProcesses.length} hạng mục
+                </span>
+              </div>
+
+              <label
+                htmlFor="print-unit-process-select-all"
+                className="flex items-center gap-2.5 rounded-lg bg-slate-900/80 border border-slate-700/80 px-3 py-2 cursor-pointer select-none hover:border-slate-600 transition-colors"
+              >
+                <input
+                  ref={selectAllRef}
+                  id="print-unit-process-select-all"
+                  type="checkbox"
+                  checked={allProcessesSelected}
+                  onChange={handleToggleSelectAllProcesses}
+                  className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/40 focus:ring-offset-0 cursor-pointer shrink-0 accent-emerald-500"
+                />
+                <span className="text-xs font-semibold text-slate-200">
+                  Chọn tất cả
+                </span>
+              </label>
+
+              <div className="max-h-44 overflow-y-auto overscroll-contain space-y-1.5 pr-1">
+                {availableUnitProcesses.map((unitProcess, idx) => {
+                  const isChecked = selectedUnitProcessSet.has(unitProcess);
+                  return (
+                    <label
+                      key={unitProcess}
+                      htmlFor={`print-unit-process-${idx}`}
+                      className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 cursor-pointer select-none transition-colors ${
+                        isChecked
+                          ? 'bg-emerald-950/25 border-emerald-500/40 hover:border-emerald-500/65'
+                          : 'bg-slate-900/50 border-slate-700/60 hover:border-slate-600'
+                      }`}
+                    >
+                      <input
+                        id={`print-unit-process-${idx}`}
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => handleToggleUnitProcess(unitProcess)}
+                        className="h-4 w-4 rounded border-slate-600 bg-slate-800 text-emerald-500 focus:ring-emerald-500/40 focus:ring-offset-0 cursor-pointer shrink-0 accent-emerald-500"
+                      />
+                      <span className="text-xs sm:text-sm text-slate-200 truncate">
+                        {unitProcess}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {isPrintBlockedByEmptyProcess && (
+                <p className="text-[11px] font-medium text-amber-400">
+                  Vui lòng chọn ít nhất 1 hạng mục để xuất bản in.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Sticky Footer */}
@@ -181,8 +360,9 @@ const PrintCustomizationModal = memo(function PrintCustomizationModal() {
           </button>
           <button
             type="button"
-            onClick={confirmAndPrint}
-            className="relative z-20 cursor-pointer select-none inline-flex items-center gap-2 min-h-[42px] px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors"
+            onClick={handleConfirmPrint}
+            disabled={isPrintBlockedByEmptyProcess}
+            className="relative z-20 cursor-pointer select-none inline-flex items-center gap-2 min-h-[42px] px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold text-white transition-colors"
           >
             <Printer className="h-4 w-4 pointer-events-none shrink-0" />
             <span className="pointer-events-none">Xác nhận In</span>

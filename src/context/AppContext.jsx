@@ -15,6 +15,8 @@ export const PROJECTS_STORAGE_KEY = 'omniEco_Projects';
 export const ACTIVE_PROJECT_STORAGE_KEY = 'omniEco_ActiveProjectId';
 export const PRINT_OPTIONS_STORAGE_KEY = 'omniEco_PrintOptions';
 export const DEFAULT_PROJECT_ID = 'default-project';
+export const DEFAULT_CONTRACTOR_NAME =
+  'Công ty TNHH Tư vấn - Đầu tư Môi trường D-V-N';
 
 export const DEFAULT_PRINT_OPTIONS = {
   showCompanyHeader: true,
@@ -56,6 +58,7 @@ function createDefaultProject() {
   return {
     id: DEFAULT_PROJECT_ID,
     name: 'Dự án mặc định',
+    contractor: DEFAULT_CONTRACTOR_NAME,
     investor: '',
     location: '',
     capacity: '',
@@ -109,6 +112,10 @@ function loadInitialProjects() {
           .map((p) => ({
             id: String(p.id),
             name: String(p.name).trim() || 'Dự án không tên',
+            contractor:
+              p.contractor !== undefined && p.contractor !== null
+                ? String(p.contractor).trim()
+                : DEFAULT_CONTRACTOR_NAME,
             investor: String(p.investor || ''),
             location: String(p.location || ''),
             capacity: String(p.capacity || ''),
@@ -261,6 +268,8 @@ export function AppProvider({ children }) {
     open: false,
     documentTitle: '',
   });
+  const [availableUnitProcesses, setAvailableUnitProcesses] = useState([]);
+  const [selectedUnitProcesses, setSelectedUnitProcesses] = useState([]);
 
   const currentProject = useMemo(
     () =>
@@ -312,6 +321,8 @@ export function AppProvider({ children }) {
     const newProject = {
       id: createProjectId(),
       name: trimmed,
+      contractor:
+        String(payload.contractor ?? '').trim() || DEFAULT_CONTRACTOR_NAME,
       investor: String(payload.investor || '').trim(),
       location: String(payload.location || '').trim(),
       capacity: String(payload.capacity || '').trim(),
@@ -338,6 +349,9 @@ export function AppProvider({ children }) {
           return {
             ...project,
             name: trimmedName,
+            contractor: String(
+              updates?.contractor ?? project.contractor ?? DEFAULT_CONTRACTOR_NAME
+            ).trim(),
             investor: String(updates?.investor ?? project.investor ?? '').trim(),
             location: String(updates?.location ?? project.location ?? '').trim(),
             capacity: String(updates?.capacity ?? project.capacity ?? '').trim(),
@@ -443,12 +457,36 @@ export function AppProvider({ children }) {
     );
   }, []);
 
-  const openPrintModal = useCallback((documentTitle = '') => {
-    setPrintModalState({
-      open: true,
-      documentTitle: typeof documentTitle === 'string' ? documentTitle : '',
+  const registerPrintUnitProcesses = useCallback((processes) => {
+    const normalized = Array.isArray(processes)
+      ? Array.from(
+          new Set(
+            processes.map((p) => String(p || '').trim()).filter(Boolean)
+          )
+        )
+      : [];
+    setAvailableUnitProcesses((prev) => {
+      if (
+        prev.length === normalized.length &&
+        prev.every((item, idx) => item === normalized[idx])
+      ) {
+        return prev;
+      }
+      return normalized;
     });
+    setSelectedUnitProcesses(normalized);
   }, []);
+
+  const openPrintModal = useCallback(
+    (documentTitle = '') => {
+      setSelectedUnitProcesses(availableUnitProcesses);
+      setPrintModalState({
+        open: true,
+        documentTitle: typeof documentTitle === 'string' ? documentTitle : '',
+      });
+    },
+    [availableUnitProcesses]
+  );
 
   const closePrintModal = useCallback(() => {
     setPrintModalState((prev) => ({ ...prev, open: false }));
@@ -649,6 +687,8 @@ export function AppProvider({ children }) {
       openPrintModal,
       closePrintModal,
       confirmAndPrint,
+      registerPrintUnitProcesses,
+      setSelectedUnitProcesses,
     }),
     [
       selectProject,
@@ -664,6 +704,7 @@ export function AppProvider({ children }) {
       openPrintModal,
       closePrintModal,
       confirmAndPrint,
+      registerPrintUnitProcesses,
     ]
   );
 
@@ -692,10 +733,14 @@ export function AppProvider({ children }) {
       importProjectJson,
       printOptions,
       printModalState,
+      availableUnitProcesses,
+      selectedUnitProcesses,
       setPrintOptions,
       openPrintModal,
       closePrintModal,
       confirmAndPrint,
+      registerPrintUnitProcesses,
+      setSelectedUnitProcesses,
     }),
     [
       projectList,
@@ -719,10 +764,13 @@ export function AppProvider({ children }) {
       importProjectJson,
       printOptions,
       printModalState,
+      availableUnitProcesses,
+      selectedUnitProcesses,
       setPrintOptions,
       openPrintModal,
       closePrintModal,
       confirmAndPrint,
+      registerPrintUnitProcesses,
     ]
   );
 

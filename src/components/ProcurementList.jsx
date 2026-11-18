@@ -103,8 +103,227 @@ function saveProcurementToStorage(storageKey, list) {
   }
 }
 
+function buildBomTotals(sourceItems) {
+  return sourceItems.reduce(
+    (acc, item) => {
+      const qty = Number(item.quantity) || 0;
+      const pw = Number(item.power) || 0;
+      acc.totalUnits += qty;
+      acc.totalPowerKw += qty * pw;
+      return acc;
+    },
+    { totalUnits: 0, totalPowerKw: 0 }
+  );
+}
+
+function buildConsolidatedBomItems(sourceItems) {
+  const map = new Map();
+
+  sourceItems.forEach((item) => {
+    const key = getConsolidationKey(item);
+    const qty = Number(item.quantity) || 0;
+    const trimmedNote = String(item.note || '').trim();
+    const unitProc = normalizeUnitProcess(item.unitProcess);
+
+    if (!map.has(key)) {
+      map.set(key, {
+        consolidationKey: key,
+        id: item.id,
+        code: item.code || item.id,
+        category: String(item.category || 'Khác'),
+        name: item.name,
+        specs: item.specs || '',
+        power: Number(item.power) || 0,
+        brand: item.brand || '',
+        unit: item.unit || 'Cái',
+        quantity: qty,
+        notesList: trimmedNote ? [trimmedNote] : [],
+        breakdownMap: new Map([[unitProc, qty]]),
+      });
+    } else {
+      const existing = map.get(key);
+      existing.quantity += qty;
+      if (trimmedNote && !existing.notesList.includes(trimmedNote)) {
+        existing.notesList.push(trimmedNote);
+      }
+      existing.breakdownMap.set(
+        unitProc,
+        (existing.breakdownMap.get(unitProc) || 0) + qty
+      );
+    }
+  });
+
+  return Array.from(map.values()).map((entry) => {
+    const unitProcessBreakdown = Array.from(entry.breakdownMap.entries())
+      .map(([unitProcess, qty]) => ({ unitProcess, quantity: qty }))
+      .sort((a, b) => a.unitProcess.localeCompare(b.unitProcess, 'vi'));
+
+    return {
+      consolidationKey: entry.consolidationKey,
+      id: entry.id,
+      code: entry.code,
+      category: entry.category,
+      name: entry.name,
+      specs: entry.specs,
+      power: entry.power,
+      brand: entry.brand,
+      unit: entry.unit,
+      quantity: entry.quantity,
+      note: entry.notesList.join('; '),
+      unitProcessBreakdown,
+      unitProcessSummary: unitProcessBreakdown
+        .map((b) => `${b.unitProcess} (${b.quantity})`)
+        .join(', '),
+    };
+  });
+}
+
+function buildDetailedGroupedByProcess(filteredDetailedItems) {
+  const groupsMap = new Map();
+  filteredDetailedItems.forEach((item) => {
+    const processName = normalizeUnitProcess(item.unitProcess);
+    if (!groupsMap.has(processName)) {
+      groupsMap.set(processName, []);
+    }
+    groupsMap.get(processName).push(item);
+  });
+
+  return Array.from(groupsMap.entries())
+    .sort(([procA], [procB]) => procA.localeCompare(procB, 'vi'))
+    .map(([unitProcess, groupItems]) => {
+      const sortedGroupItems = [...groupItems].sort((a, b) => {
+        const catDiff = (a.category || '').localeCompare(
+          b.category || '',
+          'vi'
+        );
+        if (catDiff !== 0) return catDiff;
+        return (a.name || '').localeCompare(b.name || '', 'vi');
+      });
+      const groupUnits = sortedGroupItems.reduce(
+        (sum, it) => sum + (Number(it.quantity) || 0),
+        0
+      );
+      const groupPowerKw = sortedGroupItems.reduce(
+        (sum, it) =>
+          sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
+        0
+      );
+      return {
+        unitProcess,
+        items: sortedGroupItems,
+        groupUnits,
+        groupPowerKw,
+      };
+    });
+}
+
+function buildConsolidatedGroupedByCategory(filteredConsolidatedItems) {
+  const groupsMap = new Map();
+  filteredConsolidatedItems.forEach((item) => {
+    const categoryName = (item.category || 'Khác').trim() || 'Khác';
+    if (!groupsMap.has(categoryName)) {
+      groupsMap.set(categoryName, []);
+    }
+    groupsMap.get(categoryName).push(item);
+  });
+
+  return Array.from(groupsMap.entries())
+    .sort(([catA], [catB]) => catA.localeCompare(catB, 'vi'))
+    .map(([category, groupItems]) => {
+      const sortedGroupItems = [...groupItems].sort((a, b) =>
+        (a.name || '').localeCompare(b.name || '', 'vi')
+      );
+      const groupUnits = sortedGroupItems.reduce(
+        (sum, it) => sum + (Number(it.quantity) || 0),
+        0
+      );
+      const groupPowerKw = sortedGroupItems.reduce(
+        (sum, it) =>
+          sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
+        0
+      );
+      return {
+        category,
+        items: sortedGroupItems,
+        groupUnits,
+        groupPowerKw,
+      };
+    });
+}
+
+function buildBomViewDataset(sourceItems, listSearch, listCategory) {
+  const unitProcSet = new Set();
+  sourceItems.forEach((item) => {
+    const up = String(item.unitProcess || '').trim();
+    if (up) unitProcSet.add(up);
+  });
+
+  const totals = buildBomTotals(sourceItems);
+  const consolidatedAllItems = buildConsolidatedBomItems(sourceItems);
+
+  const filteredDetailedItems = sourceItems.filter((item) => {
+    if (listCategory !== 'Tất cả' && item.category !== listCategory) {
+      return false;
+    }
+    const searchableItem = {
+      ...item,
+      note: [item.note, item.unitProcess, item.code].filter(Boolean).join(' '),
+    };
+    return matchesMultiKeywordSearch(searchableItem, listSearch);
+  });
+
+  const detailedGroupedByProcess = buildDetailedGroupedByProcess(
+    filteredDetailedItems
+  );
+
+  const filteredConsolidatedItems = consolidatedAllItems.filter((item) => {
+    if (listCategory !== 'Tất cả' && item.category !== listCategory) {
+      return false;
+    }
+    const searchableItem = {
+      ...item,
+      note: [item.note, item.unitProcessSummary, item.code]
+        .filter(Boolean)
+        .join(' '),
+    };
+    return matchesMultiKeywordSearch(searchableItem, listSearch);
+  });
+
+  const consolidatedGroupedByCategory = buildConsolidatedGroupedByCategory(
+    filteredConsolidatedItems
+  );
+
+  const detailedFilteredTotals = buildBomTotals(filteredDetailedItems);
+  const consolidatedFilteredTotals = buildBomTotals(filteredConsolidatedItems);
+
+  return {
+    sourceCount: sourceItems.length,
+    unitProcessCount: unitProcSet.size,
+    totals,
+    consolidatedAllItems,
+    filteredDetailedItems,
+    detailedGroupedByProcess,
+    filteredConsolidatedItems,
+    consolidatedGroupedByCategory,
+    detailedFilteredTotals,
+    consolidatedFilteredTotals,
+    hasAnyDetailedPower: filteredDetailedItems.some(
+      (item) => Number(item.power) > 0
+    ),
+    hasAnyConsolidatedPower: filteredConsolidatedItems.some(
+      (item) => Number(item.power) > 0
+    ),
+  };
+}
+
 export default function ProcurementList() {
-  const { currentProject, printOptions, openPrintModal } = useAppContext();
+  const {
+    currentProject,
+    printOptions,
+    selectedUnitProcesses,
+    openPrintModal,
+    registerPrintUnitProcesses,
+  } = useAppContext();
   const bomStorageKey = getProcurementStorageKey(currentProject?.id);
 
   const [bomState, setBomState] = useState(() => ({
@@ -228,201 +447,71 @@ export default function ProcurementList() {
     [bomStorageKey]
   );
 
-  // Danh sách gợi ý Hạng mục / Công trình đã có trong BOM
+  // Danh sách gợi ý Hạng mục / Công trình đã có trong BOM (unique & sorted)
   const unitProcessOptions = useMemo(() => {
     const uniqueSet = new Set();
     items.forEach((item) => {
-      const up = String(item.unitProcess || '').trim();
+      const up = normalizeUnitProcess(item.unitProcess);
       if (up) uniqueSet.add(up);
     });
     return Array.from(uniqueSet).sort((a, b) => a.localeCompare(b, 'vi'));
   }, [items]);
 
-  const totals = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        const qty = Number(item.quantity) || 0;
-        const pw = Number(item.power) || 0;
-        acc.totalUnits += qty;
-        acc.totalPowerKw += qty * pw;
-        return acc;
-      },
-      { totalUnits: 0, totalPowerKw: 0 }
+  // Đồng bộ danh sách hạng mục công trình vào AppContext để Modal In ấn trích xuất
+  useEffect(() => {
+    registerPrintUnitProcesses(unitProcessOptions);
+  }, [unitProcessOptions, registerPrintUnitProcesses]);
+
+  useEffect(() => {
+    return () => {
+      registerPrintUnitProcesses([]);
+    };
+  }, [registerPrintUnitProcesses]);
+
+  const selectedUnitProcessSet = useMemo(
+    () => new Set(selectedUnitProcesses),
+    [selectedUnitProcesses]
+  );
+
+  const isUnitProcessPrintFiltered = useMemo(
+    () =>
+      unitProcessOptions.length > 0 &&
+      unitProcessOptions.some((proc) => !selectedUnitProcessSet.has(proc)),
+    [unitProcessOptions, selectedUnitProcessSet]
+  );
+
+  const screenData = useMemo(
+    () => buildBomViewDataset(items, listSearch, listCategory),
+    [items, listSearch, listCategory]
+  );
+
+  const printFilteredItems = useMemo(() => {
+    if (!isUnitProcessPrintFiltered) return items;
+    return items.filter((item) =>
+      selectedUnitProcessSet.has(normalizeUnitProcess(item.unitProcess))
     );
-  }, [items]);
+  }, [items, isUnitProcessPrintFiltered, selectedUnitProcessSet]);
 
-  // Tổng hợp cộng dồn theo id hoặc code trên toàn bộ BOM
-  const consolidatedAllItems = useMemo(() => {
-    const map = new Map();
+  const printData = useMemo(
+    () =>
+      isUnitProcessPrintFiltered
+        ? buildBomViewDataset(printFilteredItems, listSearch, listCategory)
+        : screenData,
+    [
+      isUnitProcessPrintFiltered,
+      printFilteredItems,
+      listSearch,
+      listCategory,
+      screenData,
+    ]
+  );
 
-    items.forEach((item) => {
-      const key = getConsolidationKey(item);
-      const qty = Number(item.quantity) || 0;
-      const trimmedNote = String(item.note || '').trim();
-      const unitProc = normalizeUnitProcess(item.unitProcess);
-
-      if (!map.has(key)) {
-        map.set(key, {
-          consolidationKey: key,
-          id: item.id,
-          code: item.code || item.id,
-          category: String(item.category || 'Khác'),
-          name: item.name,
-          specs: item.specs || '',
-          power: Number(item.power) || 0,
-          brand: item.brand || '',
-          unit: item.unit || 'Cái',
-          quantity: qty,
-          notesList: trimmedNote ? [trimmedNote] : [],
-          breakdownMap: new Map([[unitProc, qty]]),
-        });
-      } else {
-        const existing = map.get(key);
-        existing.quantity += qty;
-        if (trimmedNote && !existing.notesList.includes(trimmedNote)) {
-          existing.notesList.push(trimmedNote);
-        }
-        existing.breakdownMap.set(
-          unitProc,
-          (existing.breakdownMap.get(unitProc) || 0) + qty
-        );
-      }
-    });
-
-    return Array.from(map.values()).map((entry) => {
-      const unitProcessBreakdown = Array.from(entry.breakdownMap.entries())
-        .map(([unitProcess, qty]) => ({ unitProcess, quantity: qty }))
-        .sort((a, b) => a.unitProcess.localeCompare(b.unitProcess, 'vi'));
-
-      return {
-        consolidationKey: entry.consolidationKey,
-        id: entry.id,
-        code: entry.code,
-        category: entry.category,
-        name: entry.name,
-        specs: entry.specs,
-        power: entry.power,
-        brand: entry.brand,
-        unit: entry.unit,
-        quantity: entry.quantity,
-        note: entry.notesList.join('; '),
-        unitProcessBreakdown,
-        unitProcessSummary: unitProcessBreakdown
-          .map((b) => `${b.unitProcess} (${b.quantity})`)
-          .join(', '),
-      };
-    });
-  }, [items]);
+  const { totals, consolidatedAllItems } = screenData;
 
   const listCategories = useMemo(() => {
     const set = new Set(items.map((item) => item.category).filter(Boolean));
     return ['Tất cả', ...Array.from(set)];
   }, [items]);
-
-  // Lọc ở chế độ Chi tiết theo công trình
-  const filteredDetailedItems = useMemo(() => {
-    return items.filter((item) => {
-      if (listCategory !== 'Tất cả' && item.category !== listCategory) {
-        return false;
-      }
-      const searchableItem = {
-        ...item,
-        note: [item.note, item.unitProcess, item.code].filter(Boolean).join(' '),
-      };
-      return matchesMultiKeywordSearch(searchableItem, listSearch);
-    });
-  }, [items, listSearch, listCategory]);
-
-  // Gom nhóm theo Hạng mục / Công trình (Detailed Mode)
-  const detailedGroupedByProcess = useMemo(() => {
-    const groupsMap = new Map();
-    filteredDetailedItems.forEach((item) => {
-      const processName = normalizeUnitProcess(item.unitProcess);
-      if (!groupsMap.has(processName)) {
-        groupsMap.set(processName, []);
-      }
-      groupsMap.get(processName).push(item);
-    });
-
-    return Array.from(groupsMap.entries())
-      .sort(([procA], [procB]) => procA.localeCompare(procB, 'vi'))
-      .map(([unitProcess, groupItems]) => {
-        const sortedGroupItems = [...groupItems].sort((a, b) => {
-          const catDiff = (a.category || '').localeCompare(
-            b.category || '',
-            'vi'
-          );
-          if (catDiff !== 0) return catDiff;
-          return (a.name || '').localeCompare(b.name || '', 'vi');
-        });
-        const groupUnits = sortedGroupItems.reduce(
-          (sum, it) => sum + (Number(it.quantity) || 0),
-          0
-        );
-        const groupPowerKw = sortedGroupItems.reduce(
-          (sum, it) =>
-            sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
-          0
-        );
-        return {
-          unitProcess,
-          items: sortedGroupItems,
-          groupUnits,
-          groupPowerKw,
-        };
-      });
-  }, [filteredDetailedItems]);
-
-  // Lọc ở chế độ Tổng hợp mua sắm
-  const filteredConsolidatedItems = useMemo(() => {
-    return consolidatedAllItems.filter((item) => {
-      if (listCategory !== 'Tất cả' && item.category !== listCategory) {
-        return false;
-      }
-      const searchableItem = {
-        ...item,
-        note: [item.note, item.unitProcessSummary, item.code]
-          .filter(Boolean)
-          .join(' '),
-      };
-      return matchesMultiKeywordSearch(searchableItem, listSearch);
-    });
-  }, [consolidatedAllItems, listSearch, listCategory]);
-
-  // Gom nhóm theo Category (Consolidated Mode)
-  const consolidatedGroupedByCategory = useMemo(() => {
-    const groupsMap = new Map();
-    filteredConsolidatedItems.forEach((item) => {
-      const categoryName = (item.category || 'Khác').trim() || 'Khác';
-      if (!groupsMap.has(categoryName)) {
-        groupsMap.set(categoryName, []);
-      }
-      groupsMap.get(categoryName).push(item);
-    });
-
-    return Array.from(groupsMap.entries())
-      .sort(([catA], [catB]) => catA.localeCompare(catB, 'vi'))
-      .map(([category, groupItems]) => {
-        const sortedGroupItems = [...groupItems].sort((a, b) =>
-          (a.name || '').localeCompare(b.name || '', 'vi')
-        );
-        const groupUnits = sortedGroupItems.reduce(
-          (sum, it) => sum + (Number(it.quantity) || 0),
-          0
-        );
-        const groupPowerKw = sortedGroupItems.reduce(
-          (sum, it) =>
-            sum + (Number(it.quantity) || 0) * (Number(it.power) || 0),
-          0
-        );
-        return {
-          category,
-          items: sortedGroupItems,
-          groupUnits,
-          groupPowerKw,
-        };
-      });
-  }, [filteredConsolidatedItems]);
 
   const modalCategories = useMemo(() => {
     const set = new Set(catalog.map((c) => c.category).filter(Boolean));
@@ -751,83 +840,15 @@ export default function ProcurementList() {
     openPrintModal('Danh mục Thiết bị Cần Mua sắm (BOM)');
   }, [openPrintModal]);
 
-  const hasAnyDetailedPower = useMemo(
-    () => filteredDetailedItems.some((item) => Number(item.power) > 0),
-    [filteredDetailedItems]
-  );
-
-  const hasAnyConsolidatedPower = useMemo(
-    () => filteredConsolidatedItems.some((item) => Number(item.power) > 0),
-    [filteredConsolidatedItems]
-  );
-
-  const activeHasAnyPower =
-    bomMode === 'detailed' ? hasAnyDetailedPower : hasAnyConsolidatedPower;
   const showPrintProject = Boolean(printOptions?.showProjectInfo);
   const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
 
-  const hasFilteredResults =
-    bomMode === 'detailed'
-      ? filteredDetailedItems.length > 0
-      : filteredConsolidatedItems.length > 0;
-
-  return (
-    <div className="space-y-6 pb-24 print:pb-0 print:bg-white print:text-black">
-      {/* Header Banner */}
-      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 print:text-black">
-                <ShoppingCart className="h-4 w-4 shrink-0" />
-                <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
-              </div>
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black ${
-                  !showPrintProject ? 'print:hidden' : ''
-                }`}
-              >
-                Dự án: {currentProject?.name}
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-100 print:text-black">
-              Danh mục Thiết bị Cần Mua sắm (BOM)
-            </h1>
-            <p
-              className={`text-sm text-slate-400 print:text-gray-700 max-w-2xl ${
-                !showPrintNotes ? 'print:hidden' : ''
-              }`}
-            >
-              Quản lý chi tiết thiết bị theo từng hạng mục công trình hoặc xem
-              tổng hợp cộng dồn số lượng cho dự án hiện tại để đặt hàng và theo
-              dõi công suất điện lắp đặt.
-            </p>
-          </div>
-
-          <div className="print:hidden flex flex-wrap items-center gap-2.5">
-            <button
-              type="button"
-              onClick={openAddModal}
-              className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-            >
-              <Plus className="h-4 w-4 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">Thêm thiết bị</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handlePrint}
-              disabled={items.length === 0}
-              className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 text-sm font-medium text-slate-200 transition-colors"
-            >
-              <Printer className="h-4 w-4 text-sky-400 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">In danh mục</span>
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Summary KPIs */}
+  const renderSummaryKpis = (dataset) => {
+    const activePower =
+      bomMode === 'detailed'
+        ? dataset.hasAnyDetailedPower
+        : dataset.hasAnyConsolidatedPower;
+    return (
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-700">
@@ -840,11 +861,11 @@ export default function ProcurementList() {
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-slate-100 tabular-nums print:text-black">
             {bomMode === 'detailed'
-              ? items.length
-              : consolidatedAllItems.length}{' '}
+              ? dataset.sourceCount
+              : dataset.consolidatedAllItems.length}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
               {bomMode === 'detailed'
-                ? `mục (${unitProcessOptions.length} hạng mục)`
+                ? `mục (${dataset.unitProcessCount} hạng mục)`
                 : 'chủng loại'}
             </span>
           </div>
@@ -856,7 +877,7 @@ export default function ProcurementList() {
             <ShoppingCart className="h-4 w-4 text-sky-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-slate-100 tabular-nums print:text-black">
-            {totals.totalUnits}{' '}
+            {dataset.totals.totalUnits}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
               đơn vị thiết bị
             </span>
@@ -865,7 +886,7 @@ export default function ProcurementList() {
 
         <div
           className={`rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black ${
-            !activeHasAnyPower ? 'print:hidden' : ''
+            !activePower ? 'print:hidden' : ''
           }`}
         >
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-700">
@@ -873,206 +894,101 @@ export default function ProcurementList() {
             <Zap className="h-4 w-4 text-amber-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-emerald-400 tabular-nums print:text-black">
-            {totals.totalPowerKw.toFixed(2)}{' '}
+            {dataset.totals.totalPowerKw.toFixed(2)}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
               kW
             </span>
           </div>
         </div>
       </section>
+    );
+  };
 
-      {/* BOM Mode Tabs + Search, Filter & View Toggle Bar */}
-      <section className="print:hidden rounded-xl bg-slate-800 border border-slate-700/80 p-4 space-y-3.5">
-        {/* BOM Mode Toggle Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-700/70">
-          <div
-            role="tablist"
-            aria-label="Chế độ hiển thị BOM"
-            className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-900 border border-slate-700 p-1 w-full sm:w-auto"
-          >
-            <button
-              type="button"
-              role="tab"
-              aria-selected={bomMode === 'detailed'}
-              onClick={() => setBomMode('detailed')}
-              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                bomMode === 'detailed'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <Building2 className="h-4 w-4 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">
-                Chi tiết theo công trình
-              </span>
-            </button>
+  const renderBomListSection = (dataset, isPrintOnly = false) => {
+    const hasResults =
+      bomMode === 'detailed'
+        ? dataset.filteredDetailedItems.length > 0
+        : dataset.filteredConsolidatedItems.length > 0;
+    const activeProcessesLabel = selectedUnitProcesses
+      .filter((proc) => unitProcessOptions.includes(proc))
+      .join(', ');
 
-            <button
-              type="button"
-              role="tab"
-              aria-selected={bomMode === 'consolidated'}
-              onClick={() => setBomMode('consolidated')}
-              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                bomMode === 'consolidated'
-                  ? 'bg-sky-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <PackageCheck className="h-4 w-4 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">Tổng hợp mua sắm</span>
-            </button>
-          </div>
-
-          <p className="text-xs text-slate-400">
-            {bomMode === 'detailed'
-              ? 'Gom nhóm theo từng Hạng mục / Công trình (cho phép thêm, sửa, xóa độc lập).'
-              : 'Chế độ tổng hợp (Chỉ đọc): Tự động cộng dồn số lượng thiết bị trùng mã theo Nhóm vật tư.'}
-          </p>
-        </div>
-
-        {/* Search, Category Filter, Table/Grid Toggle & Export Excel */}
-        <div className="flex flex-col md:flex-row gap-3">
-          <div className="relative w-full flex-1">
-            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            <input
-              type="text"
-              value={listSearch}
-              onChange={(e) => setListSearch(e.target.value)}
-              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; bể điều hòa)..."
-              aria-label="Tìm kiếm trong danh mục mua sắm"
-              className="w-full min-h-[44px] pl-10 pr-10 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-            />
-            {listSearch && (
-              <button
-                type="button"
-                onClick={() => setListSearch('')}
-                aria-label="Xóa từ khóa tìm kiếm"
-                className="absolute right-3 top-1/2 -translate-y-1/2 z-20 cursor-pointer p-1 text-slate-400 hover:text-white"
-              >
-                <X className="h-4 w-4 pointer-events-none" />
-              </button>
+    return (
+      <div
+        className={
+          isPrintOnly
+            ? 'hidden print:block space-y-5'
+            : isUnitProcessPrintFiltered
+              ? 'print:hidden space-y-5'
+              : 'space-y-5'
+        }
+      >
+        {/* Print Mode Subtitle */}
+        {dataset.sourceCount > 0 && (
+          <div className="hidden print:block text-sm font-semibold text-black border-b border-gray-300 pb-2 space-y-0.5">
+            <div>
+              {bomMode === 'detailed'
+                ? 'Chế độ: Chi tiết bóc tách theo từng Hạng mục / Công trình'
+                : 'Chế độ: Tổng hợp mua sắm toàn dự án (Đã cộng dồn theo mã thiết bị)'}
+            </div>
+            {isUnitProcessPrintFiltered && activeProcessesLabel && (
+              <div className="text-xs font-normal text-gray-800">
+                Hạng mục đang in:{' '}
+                <span className="font-semibold text-black">
+                  {activeProcessesLabel}
+                </span>
+              </div>
             )}
           </div>
+        )}
 
-          <div className="flex items-center gap-2 md:w-64">
-            <Filter className="h-4 w-4 text-slate-400 shrink-0" />
-            <select
-              value={listCategory}
-              onChange={(e) => setListCategory(e.target.value)}
-              aria-label="Lọc theo nhóm thiết bị"
-              className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
-            >
-              {listCategories.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat === 'Tất cả' ? `Tất cả nhóm (${items.length})` : cat}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* View Mode Toggle Buttons */}
-          <div
-            role="group"
-            aria-label="Chuyển đổi chế độ hiển thị danh mục mua sắm"
-            className="inline-flex items-center gap-1 self-start md:self-auto rounded-lg bg-slate-900 border border-slate-700 p-1 shrink-0"
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode('table')}
-              aria-pressed={viewMode === 'table'}
-              title="Xem dạng Bảng (Table)"
-              className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'table'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <List className="h-4 w-4 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">Bảng</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              aria-pressed={viewMode === 'grid'}
-              title="Xem dạng Thẻ lưới (Grid)"
-              className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                viewMode === 'grid'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4 pointer-events-none shrink-0" />
-              <span className="pointer-events-none">Thẻ</span>
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            disabled={items.length === 0}
-            title={
-              bomMode === 'detailed'
-                ? 'Xuất Excel chi tiết theo từng hạng mục công trình (CSV UTF-8)'
-                : 'Xuất Excel tổng hợp cộng dồn theo nhóm vật tư (CSV UTF-8)'
-            }
-            className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-500/50 text-sm font-semibold text-emerald-300 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-          >
-            <FileSpreadsheet className="h-4 w-4 pointer-events-none shrink-0" />
-            <span className="pointer-events-none">Xuất Excel</span>
-          </button>
-        </div>
-      </section>
-
-      {/* Print Mode Subtitle */}
-      {items.length > 0 && (
-        <div className="hidden print:block text-sm font-semibold text-black border-b border-gray-300 pb-2">
-          {bomMode === 'detailed'
-            ? 'Chế độ: Chi tiết bóc tách theo từng Hạng mục / Công trình'
-            : 'Chế độ: Tổng hợp mua sắm toàn dự án (Đã cộng dồn theo mã thiết bị)'}
-        </div>
-      )}
-
-      {/* Procurement BOM List (Detailed by UnitProcess OR Consolidated by Category) */}
-      <section className="space-y-5 pb-24 print:pb-0 print:bg-white print:text-black">
-        {items.length === 0 ? (
-          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-3 print:bg-white print:border-gray-300 print:text-black">
-            <ShoppingCart className="h-10 w-10 text-slate-600 mx-auto print:hidden" />
-            <h2 className="text-base font-semibold text-slate-200 print:text-black">
-              Danh mục mua sắm (BOM) đang trống
-            </h2>
-            <p className="text-sm text-slate-400 max-w-md mx-auto print:text-gray-700">
-              Nhấn nút{' '}
-              <strong className="text-slate-200 print:text-black">
-                &ldquo;Thêm thiết bị&rdquo;
-              </strong>{' '}
-              để chọn máy móc từ Kho Thiết bị Cơ điện, gắn cho từng Hạng mục /
-              Công trình và nhập số lượng cần đặt.
-            </p>
-            <div className="print:hidden pt-1">
-              <button
-                type="button"
-                onClick={openAddModal}
-                className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors"
-              >
-                <Plus className="h-4 w-4 pointer-events-none shrink-0" />
-                <span className="pointer-events-none">
-                  Thêm thiết bị đầu tiên
-                </span>
-              </button>
+        {/* Procurement BOM List (Detailed by UnitProcess OR Consolidated by Category) */}
+        <section className="space-y-5 pb-24 print:pb-0 print:bg-white print:text-black">
+          {dataset.sourceCount === 0 ? (
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-3 print:bg-white print:border-gray-300 print:text-black">
+              <ShoppingCart className="h-10 w-10 text-slate-600 mx-auto print:hidden" />
+              <h2 className="text-base font-semibold text-slate-200 print:text-black">
+                {isPrintOnly
+                  ? 'Không có hạng mục nào được chọn để in'
+                  : 'Danh mục mua sắm (BOM) đang trống'}
+              </h2>
+              {!isPrintOnly && (
+                <>
+                  <p className="text-sm text-slate-400 max-w-md mx-auto print:text-gray-700">
+                    Nhấn nút{' '}
+                    <strong className="text-slate-200 print:text-black">
+                      &ldquo;Thêm thiết bị&rdquo;
+                    </strong>{' '}
+                    để chọn máy móc từ Kho Thiết bị Cơ điện, gắn cho từng Hạng
+                    mục / Công trình và nhập số lượng cần đặt.
+                  </p>
+                  <div className="print:hidden pt-1">
+                    <button
+                      type="button"
+                      onClick={openAddModal}
+                      className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[42px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors"
+                    >
+                      <Plus className="h-4 w-4 pointer-events-none shrink-0" />
+                      <span className="pointer-events-none">
+                        Thêm thiết bị đầu tiên
+                      </span>
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
-          </div>
-        ) : !hasFilteredResults ? (
-          <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-2 text-sm text-slate-400 print:bg-white print:border-gray-300 print:text-black">
-            Không tìm thấy thiết bị nào trong danh mục mua sắm khớp với bộ lọc
-            hiện tại.
-          </div>
-        ) : bomMode === 'detailed' ? (
-          <>
-            {detailedGroupedByProcess.map((group) => {
-              const groupHasPower = group.items.some(
-                (item) => Number(item.power) > 0
-              );
-              return (
+          ) : !hasResults ? (
+            <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-10 text-center space-y-2 text-sm text-slate-400 print:bg-white print:border-gray-300 print:text-black">
+              Không tìm thấy thiết bị nào trong danh mục mua sắm khớp với bộ lọc
+              hiện tại.
+            </div>
+          ) : bomMode === 'detailed' ? (
+            <>
+              {dataset.detailedGroupedByProcess.map((group) => {
+                const groupHasPower = group.items.some(
+                  (item) => Number(item.power) > 0
+                );
+                return (
               <div
                 key={group.unitProcess}
                 className="rounded-xl bg-slate-800 border border-slate-700/80 overflow-visible print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black print:overflow-visible"
@@ -1456,23 +1372,23 @@ export default function ProcurementList() {
             <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black print:break-inside-avoid">
               <span>
                 Tổng cộng chi tiết theo công trình (
-                {detailedGroupedByProcess.length} hạng mục ·{' '}
-                {filteredDetailedItems.length} dòng vật tư ·{' '}
-                {totals.totalUnits} thiết bị)
+                {dataset.detailedGroupedByProcess.length} hạng mục ·{' '}
+                {dataset.filteredDetailedItems.length} dòng vật tư ·{' '}
+                {dataset.detailedFilteredTotals.totalUnits} thiết bị)
               </span>
               <span
                 className={`font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black ${
-                  !hasAnyDetailedPower ? 'print:hidden' : ''
+                  !dataset.hasAnyDetailedPower ? 'print:hidden' : ''
                 }`}
               >
-                {totals.totalPowerKw.toFixed(2)} kW
+                {dataset.detailedFilteredTotals.totalPowerKw.toFixed(2)} kW
               </span>
             </div>
           </>
         ) : (
           <>
             {/* Consolidated Mode Grouped by Category (Read-only) */}
-            {consolidatedGroupedByCategory.map((group) => {
+            {dataset.consolidatedGroupedByCategory.map((group) => {
               const groupHasPower = group.items.some(
                 (item) => Number(item.power) > 0
               );
@@ -1757,21 +1673,235 @@ export default function ProcurementList() {
             <div className="rounded-xl bg-slate-900/90 border border-slate-700 px-5 py-3.5 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold print:bg-gray-100 print:border-gray-300 print:text-black print:break-inside-avoid">
               <span>
                 Tổng hợp toàn danh mục mua sắm (
-                {consolidatedGroupedByCategory.length} nhóm vật tư ·{' '}
-                {filteredConsolidatedItems.length} chủng loại ·{' '}
-                {totals.totalUnits} thiết bị)
+                {dataset.consolidatedGroupedByCategory.length} nhóm vật tư ·{' '}
+                {dataset.filteredConsolidatedItems.length} chủng loại ·{' '}
+                {dataset.consolidatedFilteredTotals.totalUnits} thiết bị)
               </span>
               <span
                 className={`font-mono text-sm font-bold text-emerald-400 tabular-nums print:text-black ${
-                  !hasAnyConsolidatedPower ? 'print:hidden' : ''
+                  !dataset.hasAnyConsolidatedPower ? 'print:hidden' : ''
                 }`}
               >
-                {totals.totalPowerKw.toFixed(2)} kW
+                {dataset.consolidatedFilteredTotals.totalPowerKw.toFixed(2)} kW
               </span>
             </div>
           </>
         )}
       </section>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6 pb-24 print:pb-0 print:bg-white print:text-black">
+      {/* Header Banner */}
+      <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-400 print:text-black">
+                <ShoppingCart className="h-4 w-4 shrink-0" />
+                <span>Bóc tách Khối lượng & Tổng hợp Mua sắm (BOM)</span>
+              </div>
+              <span
+                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 print:bg-white print:border-gray-400 print:text-black ${
+                  !showPrintProject ? 'print:hidden' : ''
+                }`}
+              >
+                Dự án: {currentProject?.name}
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-100 print:text-black">
+              Danh mục Thiết bị Cần Mua sắm (BOM)
+            </h1>
+            <p
+              className={`text-sm text-slate-400 print:text-gray-700 max-w-2xl ${
+                !showPrintNotes ? 'print:hidden' : ''
+              }`}
+            >
+              Quản lý chi tiết thiết bị theo từng hạng mục công trình hoặc xem
+              tổng hợp cộng dồn số lượng cho dự án hiện tại để đặt hàng và theo
+              dõi công suất điện lắp đặt.
+            </p>
+          </div>
+
+          <div className="print:hidden flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-sm font-semibold text-white transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+            >
+              <Plus className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">Thêm thiết bị</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrint}
+              disabled={items.length === 0}
+              className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700 text-sm font-medium text-slate-200 transition-colors"
+            >
+              <Printer className="h-4 w-4 text-sky-400 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">In danh mục</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Summary KPIs (Screen; when print filter active, screen KPIs hide on print) */}
+      <div className={isUnitProcessPrintFiltered ? 'print:hidden' : ''}>
+        {renderSummaryKpis(screenData)}
+      </div>
+
+      {/* Print Summary KPIs when Unit Process filter is active */}
+      {isUnitProcessPrintFiltered && (
+        <div className="hidden print:block">{renderSummaryKpis(printData)}</div>
+      )}
+
+      {/* BOM Mode Tabs + Search, Filter & View Toggle Bar */}
+      <section className="print:hidden rounded-xl bg-slate-800 border border-slate-700/80 p-4 space-y-3.5">
+        {/* BOM Mode Toggle Tabs */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-700/70">
+          <div
+            role="tablist"
+            aria-label="Chế độ hiển thị BOM"
+            className="inline-flex flex-wrap items-center gap-1.5 rounded-xl bg-slate-900 border border-slate-700 p-1 w-full sm:w-auto"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bomMode === 'detailed'}
+              onClick={() => setBomMode('detailed')}
+              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                bomMode === 'detailed'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Building2 className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">
+                Chi tiết theo công trình
+              </span>
+            </button>
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bomMode === 'consolidated'}
+              onClick={() => setBomMode('consolidated')}
+              className={`relative z-20 cursor-pointer select-none flex-1 sm:flex-initial inline-flex items-center justify-center gap-2 min-h-[38px] px-3.5 py-1.5 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
+                bomMode === 'consolidated'
+                  ? 'bg-sky-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <PackageCheck className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">Tổng hợp mua sắm</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-400">
+            {bomMode === 'detailed'
+              ? 'Gom nhóm theo từng Hạng mục / Công trình (cho phép thêm, sửa, xóa độc lập).'
+              : 'Chế độ tổng hợp (Chỉ đọc): Tự động cộng dồn số lượng thiết bị trùng mã theo Nhóm vật tư.'}
+          </p>
+        </div>
+
+        {/* Search, Category Filter, Table/Grid Toggle & Export Excel */}
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative w-full flex-1">
+            <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={listSearch}
+              onChange={(e) => setListSearch(e.target.value)}
+              placeholder="Tìm nhiều từ khóa cách nhau bởi dấu ';' (VD: bơm; tsurumi; bể điều hòa)..."
+              aria-label="Tìm kiếm trong danh mục mua sắm"
+              className="w-full min-h-[44px] pl-10 pr-10 py-2 rounded-lg bg-slate-900 border border-slate-700 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+            />
+            {listSearch && (
+              <button
+                type="button"
+                onClick={() => setListSearch('')}
+                aria-label="Xóa từ khóa tìm kiếm"
+                className="absolute right-3 top-1/2 -translate-y-1/2 z-20 cursor-pointer p-1 text-slate-400 hover:text-white"
+              >
+                <X className="h-4 w-4 pointer-events-none" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 md:w-64">
+            <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+            <select
+              value={listCategory}
+              onChange={(e) => setListCategory(e.target.value)}
+              aria-label="Lọc theo nhóm thiết bị"
+              className="w-full min-h-[44px] rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30"
+            >
+              {listCategories.map((cat) => (
+                <option key={cat} value={cat}>
+                  {cat === 'Tất cả' ? `Tất cả nhóm (${items.length})` : cat}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* View Mode Toggle Buttons */}
+          <div
+            role="group"
+            aria-label="Chuyển đổi chế độ hiển thị danh mục mua sắm"
+            className="inline-flex items-center gap-1 self-start md:self-auto rounded-lg bg-slate-900 border border-slate-700 p-1 shrink-0"
+          >
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              aria-pressed={viewMode === 'table'}
+              title="Xem dạng Bảng (Table)"
+              className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                viewMode === 'table'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <List className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">Bảng</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              aria-pressed={viewMode === 'grid'}
+              title="Xem dạng Thẻ lưới (Grid)"
+              className={`relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                viewMode === 'grid'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <LayoutGrid className="h-4 w-4 pointer-events-none shrink-0" />
+              <span className="pointer-events-none">Thẻ</span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            disabled={items.length === 0}
+            title={
+              bomMode === 'detailed'
+                ? 'Xuất Excel chi tiết theo từng hạng mục công trình (CSV UTF-8)'
+                : 'Xuất Excel tổng hợp cộng dồn theo nhóm vật tư (CSV UTF-8)'
+            }
+            className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 disabled:opacity-50 disabled:cursor-not-allowed border border-emerald-500/50 text-sm font-semibold text-emerald-300 transition-colors shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+          >
+            <FileSpreadsheet className="h-4 w-4 pointer-events-none shrink-0" />
+            <span className="pointer-events-none">Xuất Excel</span>
+          </button>
+        </div>
+      </section>
+
+      {renderBomListSection(screenData, false)}
+      {isUnitProcessPrintFiltered && renderBomListSection(printData, true)}
 
       {/* Modal Popup Thêm mới / Sửa Thiết bị trong BOM */}
       {isModalOpen && (
