@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const WATER_ADV_EQUIPMENT_LABELS = {
   softener: 'Cột Làm mềm nước (Cation)',
@@ -47,7 +48,7 @@ export default function WaterSupplyAdvanced() {
   const qHour = hydraulics.qHour;
 
   // --- Tab 1: Làm mềm (Cột Cation Tròn) ---
-  const [softener, setSoftener] = useState({
+  const [softener, setSoftener] = useProjectState('waterAdv_softener', {
     numCols: 2,
     velTarget: 18, // m/h (chuẩn 15 - 25)
     velMax: 25,
@@ -57,30 +58,30 @@ export default function WaterSupplyAdvanced() {
     cycleHours: 12, // giờ giữa 2 lần hoàn nguyên
     resinDepthM: 1.2,
   });
-  const [softOv, setSoftOv] = useState(null);
+  const [softOv, setSoftOv] = useProjectState('waterAdv_softOv', null);
 
   // --- Tab 2: Lọc than (Cột Than hoạt tính Tròn) ---
-  const [carbon, setCarbon] = useState({
+  const [carbon, setCarbon] = useProjectState('waterAdv_carbon', {
     numCols: 2,
     velTarget: 10, // m/h (chuẩn 8 - 15)
     velMax: 15,
     ebctMin: 8, // phút (tối thiểu 5 phút)
     mediaDepthM: 1.2,
   });
-  const [carbonOv, setCarbonOv] = useState(null);
+  const [carbonOv, setCarbonOv] = useProjectState('waterAdv_carbonOv', null);
 
   // --- Tab 3: RO / UF ---
-  const [rouf, setRouf] = useState({
+  const [rouf, setRouf] = useProjectState('waterAdv_rouf', {
     systemType: 'RO', // RO | UF
     elementModel: 'RO 8040',
     fluxTargetLmh: 18,
     recoveryPct: 75,
     elementsPerHousing: 4,
   });
-  const [roufOv, setRoufOv] = useState(null);
+  const [roufOv, setRoufOv] = useProjectState('waterAdv_roufOv', null);
 
   // --- Tab 4: Nước rửa tay y tế ---
-  const [medical, setMedical] = useState({
+  const [medical, setMedical] = useProjectState('waterAdv_medical', {
     pipeInnerDiaMm: 25, // mm (Inox 316L DN25)
     deadLegLengthMm: 60, // mm (Chuẩn <= 3 * d = 75 mm)
     loopFlowM3h: 4.5, // lưu lượng bơm tuần hoàn giữ v >= 1.0 m/s

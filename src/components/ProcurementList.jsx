@@ -27,6 +27,8 @@ import {
   matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
 import { useAppContext } from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { safeSetItem } from '../utils/storage';
 
 export const getProcurementStorageKey = (projectId) =>
   `omniEco_BOM_${projectId || 'default-project'}`;
@@ -96,11 +98,7 @@ function loadProcurementFromStorage(storageKey) {
 
 function saveProcurementToStorage(storageKey, list) {
   if (typeof window === 'undefined' || !storageKey) return;
-  try {
-    window.localStorage.setItem(storageKey, JSON.stringify(list));
-  } catch {
-    // Bỏ qua nếu bộ nhớ trình duyệt đầy
-  }
+  safeSetItem(storageKey, JSON.stringify(list));
 }
 
 function buildBomTotals(sourceItems) {
@@ -417,6 +415,8 @@ export default function ProcurementList() {
       window.removeEventListener(EQUIPMENT_UPDATED_EVENT, onCustomUpdate);
     };
   }, [refreshCatalog, bomStorageKey]);
+
+  useBodyScrollLock(isModalOpen);
 
   // Đóng modal bằng phím Escape
   useEffect(() => {
@@ -844,28 +844,34 @@ export default function ProcurementList() {
   const showPrintNotes = Boolean(printOptions?.showDetailedNotes);
 
   const renderSummaryKpis = (dataset) => {
-    const activePower =
-      bomMode === 'detailed'
-        ? dataset.hasAnyDetailedPower
-        : dataset.hasAnyConsolidatedPower;
+    const isDetailed = bomMode === 'detailed';
+    const activePower = isDetailed
+      ? dataset.hasAnyDetailedPower
+      : dataset.hasAnyConsolidatedPower;
+    const activeTotals = isDetailed
+      ? dataset.detailedFilteredTotals
+      : dataset.consolidatedFilteredTotals;
+    const activeItemCount = isDetailed
+      ? dataset.filteredDetailedItems.length
+      : dataset.filteredConsolidatedItems.length;
+    const activeProcessCount = dataset.detailedGroupedByProcess.length;
+
     return (
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="rounded-xl bg-slate-800 border border-slate-700/80 p-4 print:bg-white print:border print:border-gray-300 print:shadow-none print:text-black">
           <div className="flex items-center justify-between text-xs text-slate-400 print:text-gray-700">
             <span>
-              {bomMode === 'detailed'
+              {isDetailed
                 ? 'Số dòng bóc tách theo công trình'
                 : 'Số chủng loại tổng hợp đặt mua'}
             </span>
             <Package className="h-4 w-4 text-emerald-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-slate-100 tabular-nums print:text-black">
-            {bomMode === 'detailed'
-              ? dataset.sourceCount
-              : dataset.consolidatedAllItems.length}{' '}
+            {activeItemCount}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
-              {bomMode === 'detailed'
-                ? `mục (${dataset.unitProcessCount} hạng mục)`
+              {isDetailed
+                ? `mục (${activeProcessCount} hạng mục)`
                 : 'chủng loại'}
             </span>
           </div>
@@ -877,7 +883,7 @@ export default function ProcurementList() {
             <ShoppingCart className="h-4 w-4 text-sky-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-slate-100 tabular-nums print:text-black">
-            {dataset.totals.totalUnits}{' '}
+            {activeTotals.totalUnits}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
               đơn vị thiết bị
             </span>
@@ -894,7 +900,7 @@ export default function ProcurementList() {
             <Zap className="h-4 w-4 text-amber-400 print:text-black" />
           </div>
           <div className="mt-1.5 font-mono text-2xl font-bold text-emerald-400 tabular-nums print:text-black">
-            {dataset.totals.totalPowerKw.toFixed(2)}{' '}
+            {activeTotals.totalPowerKw.toFixed(2)}{' '}
             <span className="text-xs font-sans font-normal text-slate-400 print:text-gray-700">
               kW
             </span>
@@ -1025,174 +1031,182 @@ export default function ProcurementList() {
                   </div>
                 </div>
 
-                {viewMode === 'table' ? (
-                  <div className="overflow-x-auto print:overflow-visible print:bg-white print:text-black">
-                    <table className="w-full text-left border-collapse text-sm print:text-black">
-                      <thead>
-                        <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
-                          <th className="py-3 px-4 font-semibold whitespace-nowrap">
-                            STT / Mã
-                          </th>
-                          <th className="py-3 px-4 font-semibold">
-                            Thiết bị & Thông số kỹ thuật
-                          </th>
-                          <th className="py-3 px-4 font-semibold">Hãng SX</th>
-                          <th
-                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
-                              !groupHasPower ? 'print:hidden' : ''
-                            }`}
+                <div
+                  className={
+                    viewMode === 'table'
+                      ? 'overflow-x-auto print:overflow-visible print:bg-white print:text-black'
+                      : 'hidden print:block print:overflow-visible print:bg-white print:text-black'
+                  }
+                >
+                  <table className="w-full text-left border-collapse text-sm print:text-[11px] print:text-black">
+                    <thead>
+                      <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
+                        <th className="py-3 px-4 font-semibold whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          STT / Mã
+                        </th>
+                        <th className="py-3 px-4 font-semibold print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Thiết bị & Thông số kỹ thuật
+                        </th>
+                        <th className="py-3 px-4 font-semibold print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Hãng SX
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !groupHasPower ? 'print:hidden' : ''
+                          }`}
+                        >
+                          P đơn vị (kW)
+                        </th>
+                        <th className="py-3 px-4 font-semibold text-center whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Số lượng
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !groupHasPower ? 'print:hidden' : ''
+                          }`}
+                        >
+                          Tổng P (kW)
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold min-w-[180px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !showPrintNotes ? 'print:hidden' : ''
+                          }`}
+                        >
+                          Ghi chú mua sắm
+                        </th>
+                        <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
+                          Thao tác
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
+                      {group.items.map((item, idx) => {
+                        const rowPowerKw =
+                          (Number(item.quantity) || 0) *
+                          (Number(item.power) || 0);
+                        return (
+                          <tr
+                            key={item.bomId}
+                            className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
                           >
-                            P đơn vị (kW)
-                          </th>
-                          <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
-                            Số lượng
-                          </th>
-                          <th
-                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
-                              !groupHasPower ? 'print:hidden' : ''
-                            }`}
-                          >
-                            Tổng P (kW)
-                          </th>
-                          <th
-                            className={`py-3 px-4 font-semibold min-w-[180px] ${
-                              !showPrintNotes ? 'print:hidden' : ''
-                            }`}
-                          >
-                            Ghi chú mua sắm
-                          </th>
-                          <th className="print:hidden py-3 px-4 font-semibold text-right whitespace-nowrap">
-                            Thao tác
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
-                        {group.items.map((item, idx) => {
-                          const rowPowerKw =
-                            (Number(item.quantity) || 0) *
-                            (Number(item.power) || 0);
-                          return (
-                            <tr
-                              key={item.bomId}
-                              className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
-                            >
-                              <td className="py-3 px-4 align-top whitespace-nowrap">
-                                <div className="font-mono text-xs text-slate-400 print:text-black">
-                                  #{idx + 1} · {item.id}
-                                </div>
-                                <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-emerald-400 print:bg-white print:border-gray-400 print:text-black">
-                                  {item.category}
-                                </span>
-                              </td>
+                            <td className="py-3 px-4 align-top whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <div className="font-mono text-xs text-slate-400 print:text-[11px] print:text-black">
+                                #{idx + 1} · {item.id}
+                              </div>
+                              <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-emerald-400 print:bg-white print:border-gray-400 print:text-black print:px-1 print:py-0 print:text-[10px]">
+                                {item.category}
+                              </span>
+                            </td>
 
-                              <td className="py-3 px-4 align-top min-w-[220px]">
-                                <div className="font-semibold text-slate-100 print:text-black">
-                                  {item.name}
-                                </div>
-                                <div
-                                  className={`mt-0.5 text-xs text-slate-400 print:text-gray-700 ${
-                                    !showPrintNotes ? 'print:hidden' : ''
-                                  }`}
-                                >
-                                  {item.specs || 'Chưa có mô tả thông số'}
-                                </div>
-                              </td>
-
-                              <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:text-black">
-                                {item.brand || '—'}
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black ${
-                                  !groupHasPower ? 'print:hidden' : ''
-                                }`}
-                              >
-                                {Number(item.power || 0).toFixed(2)}
-                              </td>
-
-                              <td className="py-3 px-4 align-middle text-center whitespace-nowrap">
-                                <div className="print:hidden inline-flex items-center gap-1.5">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    aria-label={`Số lượng cần mua ${item.name} (${item.unitProcess})`}
-                                    value={String(item.quantity ?? 0)}
-                                    onChange={(e) =>
-                                      handleQuantityChange(
-                                        item.bomId,
-                                        e.target.value
-                                      )
-                                    }
-                                    className="w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
-                                  />
-                                  <span className="text-xs text-slate-400">
-                                    {item.unit}
-                                  </span>
-                                </div>
-                                <span className="hidden print:inline font-mono text-black">
-                                  {item.quantity} {item.unit}
-                                </span>
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black ${
-                                  !groupHasPower ? 'print:hidden' : ''
-                                }`}
-                              >
-                                {rowPowerKw.toFixed(2)} kW
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle ${
+                            <td className="py-3 px-4 align-top min-w-[220px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <div className="font-semibold text-slate-100 print:text-black">
+                                {item.name}
+                              </div>
+                              <div
+                                className={`mt-0.5 text-xs text-slate-400 print:text-[10px] print:text-gray-700 ${
                                   !showPrintNotes ? 'print:hidden' : ''
                                 }`}
                               >
+                                {item.specs || 'Chưa có mô tả thông số'}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black">
+                              {item.brand || '—'}
+                            </td>
+
+                            <td
+                              className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black ${
+                                !groupHasPower ? 'print:hidden' : ''
+                              }`}
+                            >
+                              {Number(item.power || 0).toFixed(2)}
+                            </td>
+
+                            <td className="py-3 px-4 align-middle text-center whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <div className="print:hidden inline-flex items-center gap-1.5">
                                 <input
                                   type="text"
-                                  value={item.note}
+                                  inputMode="numeric"
+                                  aria-label={`Số lượng cần mua ${item.name} (${item.unitProcess})`}
+                                  value={String(item.quantity ?? 0)}
                                   onChange={(e) =>
-                                    handleNoteChange(item.bomId, e.target.value)
+                                    handleQuantityChange(
+                                      item.bomId,
+                                      e.target.value
+                                    )
                                   }
-                                  placeholder="VD: Mua gấp, Chờ duyệt..."
-                                  aria-label={`Ghi chú mua sắm ${item.name} (${item.unitProcess})`}
-                                  className="print:hidden w-full rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                                  className="w-16 text-center rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
                                 />
-                                <span className="hidden print:inline text-xs text-black">
-                                  {item.note || '—'}
+                                <span className="text-xs text-slate-400">
+                                  {item.unit}
                                 </span>
-                              </td>
+                              </div>
+                              <span className="hidden print:inline font-mono text-black">
+                                {item.quantity} {item.unit}
+                              </span>
+                            </td>
 
-                              <td className="print:hidden py-3 px-4 align-middle text-right whitespace-nowrap overflow-visible">
-                                <div className="inline-flex items-center justify-end gap-1.5">
-                                  <button
-                                    type="button"
-                                    onClick={() => openEditModal(item)}
-                                    aria-label={`Sửa ${item.name}`}
-                                    title="Chỉnh sửa hạng mục / số lượng / thiết bị"
-                                    className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 hover:border-sky-500/50 text-sky-400 transition-colors"
-                                  >
-                                    <Edit3 className="h-4 w-4 pointer-events-none" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleRemoveItem(item.bomId)}
-                                    aria-label={`Xóa ${item.name}`}
-                                    title="Xóa khỏi danh mục"
-                                    className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
-                                  >
-                                    <Trash2 className="h-4 w-4 pointer-events-none" />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="p-4 sm:p-5 print:p-3 print:bg-white print:text-black">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+                            <td
+                              className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black ${
+                                !groupHasPower ? 'print:hidden' : ''
+                              }`}
+                            >
+                              {rowPowerKw.toFixed(2)} kW
+                            </td>
+
+                            <td
+                              className={`py-3 px-4 align-middle print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                                !showPrintNotes ? 'print:hidden' : ''
+                              }`}
+                            >
+                              <input
+                                type="text"
+                                value={item.note}
+                                onChange={(e) =>
+                                  handleNoteChange(item.bomId, e.target.value)
+                                }
+                                placeholder="VD: Mua gấp, Chờ duyệt..."
+                                aria-label={`Ghi chú mua sắm ${item.name} (${item.unitProcess})`}
+                                className="print:hidden w-full rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-xs text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                              />
+                              <span className="hidden print:inline text-[11px] text-black">
+                                {item.note || '—'}
+                              </span>
+                            </td>
+
+                            <td className="print:hidden py-3 px-4 align-middle text-right whitespace-nowrap overflow-visible">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(item)}
+                                  aria-label={`Sửa ${item.name}`}
+                                  title="Chỉnh sửa hạng mục / số lượng / thiết bị"
+                                  className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 border border-slate-700 hover:border-sky-500/50 text-sky-400 transition-colors"
+                                >
+                                  <Edit3 className="h-4 w-4 pointer-events-none" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveItem(item.bomId)}
+                                  aria-label={`Xóa ${item.name}`}
+                                  title="Xóa khỏi danh mục"
+                                  className="relative z-20 cursor-pointer select-none inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-900 hover:bg-red-950/70 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
+                                >
+                                  <Trash2 className="h-4 w-4 pointer-events-none" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {viewMode === 'grid' && (
+                  <div className="p-4 sm:p-5 print:hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {group.items.map((item, idx) => {
                         const rowPowerKw =
                           (Number(item.quantity) || 0) *
@@ -1429,130 +1443,138 @@ export default function ProcurementList() {
                   </div>
                 </div>
 
-                {viewMode === 'table' ? (
-                  <div className="overflow-x-auto print:overflow-visible print:bg-white print:text-black">
-                    <table className="w-full text-left border-collapse text-sm print:text-black">
-                      <thead>
-                        <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
-                          <th className="py-3 px-4 font-semibold whitespace-nowrap">
-                            STT / Mã
-                          </th>
-                          <th className="py-3 px-4 font-semibold">
-                            Thiết bị, Thông số & Phân bổ
-                          </th>
-                          <th className="py-3 px-4 font-semibold">Hãng SX</th>
-                          <th
-                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
-                              !groupHasPower ? 'print:hidden' : ''
-                            }`}
+                <div
+                  className={
+                    viewMode === 'table'
+                      ? 'overflow-x-auto print:overflow-visible print:bg-white print:text-black'
+                      : 'hidden print:block print:overflow-visible print:bg-white print:text-black'
+                  }
+                >
+                  <table className="w-full text-left border-collapse text-sm print:text-[11px] print:text-black">
+                    <thead>
+                      <tr className="bg-slate-900/60 border-b border-slate-700 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-50 print:text-black print:border-gray-300">
+                        <th className="py-3 px-4 font-semibold whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          STT / Mã
+                        </th>
+                        <th className="py-3 px-4 font-semibold print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Thiết bị, Thông số & Phân bổ
+                        </th>
+                        <th className="py-3 px-4 font-semibold print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Hãng SX
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !groupHasPower ? 'print:hidden' : ''
+                          }`}
+                        >
+                          P đơn vị (kW)
+                        </th>
+                        <th className="py-3 px-4 font-semibold text-center whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                          Số lượng
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !groupHasPower ? 'print:hidden' : ''
+                          }`}
+                        >
+                          Tổng P (kW)
+                        </th>
+                        <th
+                          className={`py-3 px-4 font-semibold min-w-[180px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                            !showPrintNotes ? 'print:hidden' : ''
+                          }`}
+                        >
+                          Ghi chú tổng hợp
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
+                      {group.items.map((item, idx) => {
+                        const rowPowerKw =
+                          (Number(item.quantity) || 0) *
+                          (Number(item.power) || 0);
+                        return (
+                          <tr
+                            key={item.consolidationKey}
+                            className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
                           >
-                            P đơn vị (kW)
-                          </th>
-                          <th className="py-3 px-4 font-semibold text-center whitespace-nowrap">
-                            Số lượng
-                          </th>
-                          <th
-                            className={`py-3 px-4 font-semibold text-right whitespace-nowrap ${
-                              !groupHasPower ? 'print:hidden' : ''
-                            }`}
-                          >
-                            Tổng P (kW)
-                          </th>
-                          <th
-                            className={`py-3 px-4 font-semibold min-w-[180px] ${
-                              !showPrintNotes ? 'print:hidden' : ''
-                            }`}
-                          >
-                            Ghi chú tổng hợp
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-700/70 print:divide-gray-300">
-                        {group.items.map((item, idx) => {
-                          const rowPowerKw =
-                            (Number(item.quantity) || 0) *
-                            (Number(item.power) || 0);
-                          return (
-                            <tr
-                              key={item.consolidationKey}
-                              className="hover:bg-slate-900/40 transition-colors print:bg-white print:hover:bg-white"
-                            >
-                              <td className="py-3 px-4 align-top whitespace-nowrap">
-                                <div className="font-mono text-xs text-slate-400 print:text-black">
-                                  #{idx + 1} · {item.id}
-                                </div>
-                                <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-sky-400 print:bg-white print:border-gray-400 print:text-black">
-                                  {item.category}
-                                </span>
-                              </td>
+                            <td className="py-3 px-4 align-top whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <div className="font-mono text-xs text-slate-400 print:text-[11px] print:text-black">
+                                #{idx + 1} · {item.id}
+                              </div>
+                              <span className="mt-1 inline-block rounded bg-slate-900 border border-slate-700 px-2 py-0.5 text-[11px] font-medium text-sky-400 print:bg-white print:border-gray-400 print:text-black print:px-1 print:py-0 print:text-[10px]">
+                                {item.category}
+                              </span>
+                            </td>
 
-                              <td className="py-3 px-4 align-top min-w-[230px]">
-                                <div className="font-semibold text-slate-100 print:text-black">
-                                  {item.name}
-                                </div>
-                                <div
-                                  className={`mt-0.5 text-xs text-slate-400 print:text-gray-700 ${
-                                    !showPrintNotes ? 'print:hidden' : ''
-                                  }`}
-                                >
-                                  {item.specs || 'Chưa có mô tả thông số'}
-                                </div>
-                                {item.unitProcessSummary && (
-                                  <div
-                                    className={`mt-1 text-[11px] text-emerald-400/90 print:text-gray-700 ${
-                                      !showPrintNotes ? 'print:hidden' : ''
-                                    }`}
-                                  >
-                                    Phân bổ: {item.unitProcessSummary}
-                                  </div>
-                                )}
-                              </td>
-
-                              <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:text-black">
-                                {item.brand || '—'}
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:text-black ${
-                                  !groupHasPower ? 'print:hidden' : ''
-                                }`}
-                              >
-                                {Number(item.power || 0).toFixed(2)}
-                              </td>
-
-                              <td className="py-3 px-4 align-middle text-center whitespace-nowrap">
-                                <span className="inline-flex items-center gap-1 rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 font-mono text-sm font-bold text-emerald-400 tabular-nums print:bg-white print:border-gray-400 print:text-black">
-                                  {item.quantity}
-                                  <span className="text-xs font-sans font-normal text-slate-400 print:text-black">
-                                    {item.unit}
-                                  </span>
-                                </span>
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:text-black ${
-                                  !groupHasPower ? 'print:hidden' : ''
-                                }`}
-                              >
-                                {rowPowerKw.toFixed(2)} kW
-                              </td>
-
-                              <td
-                                className={`py-3 px-4 align-middle text-xs text-slate-300 print:text-black ${
+                            <td className="py-3 px-4 align-top min-w-[230px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <div className="font-semibold text-slate-100 print:text-black">
+                                {item.name}
+                              </div>
+                              <div
+                                className={`mt-0.5 text-xs text-slate-400 print:text-[10px] print:text-gray-700 ${
                                   !showPrintNotes ? 'print:hidden' : ''
                                 }`}
                               >
-                                {item.note || '—'}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="p-4 sm:p-5 print:p-3 print:bg-white print:text-black">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+                                {item.specs || 'Chưa có mô tả thông số'}
+                              </div>
+                              {item.unitProcessSummary && (
+                                <div
+                                  className={`mt-1 text-[11px] text-emerald-400/90 print:text-[10px] print:text-gray-700 ${
+                                    !showPrintNotes ? 'print:hidden' : ''
+                                  }`}
+                                >
+                                  Phân bổ: {item.unitProcessSummary}
+                                </div>
+                              )}
+                            </td>
+
+                            <td className="py-3 px-4 align-top text-xs text-slate-300 min-w-[120px] print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black">
+                              {item.brand || '—'}
+                            </td>
+
+                            <td
+                              className={`py-3 px-4 align-middle text-right font-mono text-slate-200 tabular-nums whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black ${
+                                !groupHasPower ? 'print:hidden' : ''
+                              }`}
+                            >
+                              {Number(item.power || 0).toFixed(2)}
+                            </td>
+
+                            <td className="py-3 px-4 align-middle text-center whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                              <span className="inline-flex items-center gap-1 rounded-md bg-slate-900 border border-slate-700 px-2.5 py-1 font-mono text-sm font-bold text-emerald-400 tabular-nums print:bg-white print:border-0 print:p-0 print:text-[11px] print:text-black">
+                                {item.quantity}
+                                <span className="text-xs font-sans font-normal text-slate-400 print:text-[11px] print:text-black">
+                                  {item.unit}
+                                </span>
+                              </span>
+                            </td>
+
+                            <td
+                              className={`py-3 px-4 align-middle text-right font-mono font-bold text-amber-300 tabular-nums whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black ${
+                                !groupHasPower ? 'print:hidden' : ''
+                              }`}
+                            >
+                              {rowPowerKw.toFixed(2)} kW
+                            </td>
+
+                            <td
+                              className={`py-3 px-4 align-middle text-xs text-slate-300 print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] print:text-black ${
+                                !showPrintNotes ? 'print:hidden' : ''
+                              }`}
+                            >
+                              {item.note || '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {viewMode === 'grid' && (
+                  <div className="p-4 sm:p-5 print:hidden">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {group.items.map((item, idx) => {
                         const rowPowerKw =
                           (Number(item.quantity) || 0) *
@@ -1914,7 +1936,7 @@ export default function ProcurementList() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-4xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-4xl max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
@@ -2205,14 +2227,29 @@ export default function ProcurementList() {
             </div>
 
             {/* Sticky Modal Footer: Unit Process, Quantity, Note & Submit */}
-            <form
-              onSubmit={handleSaveModal}
-              className="sticky bottom-0 z-20 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 space-y-2.5 shrink-0"
-            >
-              {pickedEquipment && (
-                <div className="rounded-lg bg-emerald-950/35 border border-emerald-500/30 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="min-w-0">
-                    <span className="text-slate-400">Thiết bị đang chọn: </span>
+            {!pickedEquipment ? (
+              <div className="sticky bottom-0 z-20 bg-slate-900/95 backdrop-blur border-t border-slate-800 p-2.5 sm:p-4 flex items-center justify-between gap-2.5 shrink-0">
+                <p className="text-xs text-slate-400 leading-snug min-w-0">
+                  Chọn 1 thiết bị ở danh sách trên để nhập hạng mục và số lượng.
+                </p>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="relative z-20 cursor-pointer select-none min-h-[38px] sm:min-h-[40px] px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-medium text-slate-300 shrink-0"
+                >
+                  <span className="pointer-events-none">Đóng</span>
+                </button>
+              </div>
+            ) : (
+              <form
+                onSubmit={handleSaveModal}
+                className="sticky bottom-0 z-20 bg-slate-900/95 backdrop-blur border-t border-slate-800 p-2.5 sm:p-4 space-y-2 sm:space-y-2.5 shrink-0"
+              >
+                <div className="rounded-lg bg-emerald-950/35 border border-emerald-500/30 px-2.5 py-1 sm:px-3 sm:py-1.5 flex items-center justify-between gap-2 text-xs">
+                  <div className="min-w-0 truncate">
+                    <span className="text-slate-400 hidden sm:inline">
+                      Thiết bị đang chọn:{' '}
+                    </span>
                     <strong className="text-emerald-300">
                       {pickedEquipment.name}
                     </strong>{' '}
@@ -2225,47 +2262,46 @@ export default function ProcurementList() {
                     {pickedEquipment.unit || 'Cái'}
                   </span>
                 </div>
-              )}
 
-              {modalError && (
-                <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3 py-2 text-xs text-red-200">
-                  {modalError}
-                </div>
-              )}
+                {modalError && (
+                  <div className="rounded-lg bg-red-950/60 border border-red-500/50 px-3 py-1.5 text-xs text-red-200">
+                    {modalError}
+                  </div>
+                )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 sm:gap-3 items-end">
-                <div className="sm:col-span-4">
-                  <label
-                    htmlFor="bom-modal-unit-process"
-                    className="block text-xs font-medium text-slate-300 mb-1"
-                  >
-                    Hạng mục / Công trình <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    id="bom-modal-unit-process"
-                    type="text"
-                    required
-                    list="unit-process-list"
-                    value={unitProcessInput}
-                    onChange={(e) => {
-                      setUnitProcessInput(e.target.value);
-                      if (modalError) setModalError('');
-                    }}
-                    placeholder="VD: Bể Điều hòa, Bể Aerotank..."
-                    className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
-                  />
-                  <datalist id="unit-process-list">
-                    {unitProcessOptions.map((proc) => (
-                      <option key={proc} value={proc} />
-                    ))}
-                  </datalist>
-                </div>
+                <div className="grid grid-cols-12 gap-2 sm:gap-3 items-end">
+                  <div className="col-span-8 sm:col-span-4">
+                    <label
+                      htmlFor="bom-modal-unit-process"
+                      className="block text-[11px] sm:text-xs font-medium text-slate-300 mb-1"
+                    >
+                      Hạng mục / Công trình{' '}
+                      <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      id="bom-modal-unit-process"
+                      type="text"
+                      required
+                      list="unit-process-list"
+                      value={unitProcessInput}
+                      onChange={(e) => {
+                        setUnitProcessInput(e.target.value);
+                        if (modalError) setModalError('');
+                      }}
+                      placeholder="VD: Bể Điều hòa, Aerotank..."
+                      className="w-full min-h-[38px] sm:min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-2.5 sm:px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                    <datalist id="unit-process-list">
+                      {unitProcessOptions.map((proc) => (
+                        <option key={proc} value={proc} />
+                      ))}
+                    </datalist>
+                  </div>
 
-                <div className="grid grid-cols-3 sm:contents gap-2.5">
-                  <div className="col-span-1 sm:col-span-2">
+                  <div className="col-span-4 sm:col-span-2">
                     <label
                       htmlFor="bom-modal-qty"
-                      className="block text-xs font-medium text-slate-300 mb-1"
+                      className="block text-[11px] sm:text-xs font-medium text-slate-300 mb-1"
                     >
                       Số lượng <span className="text-red-400">*</span>
                     </label>
@@ -2277,14 +2313,14 @@ export default function ProcurementList() {
                       onChange={(e) =>
                         setQuantityInput(sanitizeIntInput(e.target.value))
                       }
-                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                      className="w-full min-h-[38px] sm:min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-2.5 sm:px-3 py-1.5 text-sm font-mono font-semibold text-emerald-400 focus:outline-none focus:border-emerald-500"
                     />
                   </div>
 
-                  <div className="col-span-2 sm:col-span-3">
+                  <div className="col-span-12 sm:col-span-3">
                     <label
                       htmlFor="bom-modal-note"
-                      className="block text-xs font-medium text-slate-300 mb-1"
+                      className="block text-[11px] sm:text-xs font-medium text-slate-300 mb-1"
                     >
                       Ghi chú (tùy chọn)
                     </label>
@@ -2294,47 +2330,46 @@ export default function ProcurementList() {
                       value={noteInput}
                       onChange={(e) => setNoteInput(e.target.value)}
                       placeholder="VD: Mua gấp, Chờ duyệt..."
-                      className="w-full min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
+                      className="w-full min-h-[38px] sm:min-h-[40px] rounded-lg bg-slate-800 border border-slate-700 px-2.5 sm:px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-500"
                     />
+                  </div>
+
+                  <div className="col-span-12 sm:col-span-3 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={closeModal}
+                      className="relative z-20 cursor-pointer select-none min-h-[38px] sm:min-h-[40px] px-3 py-1.5 sm:py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-medium text-slate-300"
+                    >
+                      <span className="pointer-events-none">Đóng</span>
+                    </button>
+                    <button
+                      type="submit"
+                      className="relative z-20 cursor-pointer select-none flex-1 sm:flex-initial min-h-[38px] sm:min-h-[40px] px-3.5 py-1.5 sm:py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-semibold text-white whitespace-nowrap"
+                    >
+                      <span className="pointer-events-none">
+                        {editingBomId ? 'Lưu thay đổi' : 'Thêm vào BOM'}
+                      </span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="sm:col-span-3 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={closeModal}
-                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-sm font-medium text-slate-300"
-                  >
-                    <span className="pointer-events-none">Đóng</span>
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!pickedEquipment}
-                    className="relative z-20 cursor-pointer select-none min-h-[40px] px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-semibold text-white whitespace-nowrap"
-                  >
-                    <span className="pointer-events-none">
-                      {editingBomId ? 'Lưu thay đổi' : 'Thêm vào BOM'}
-                    </span>
-                  </button>
+                <div className="hidden sm:flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] text-slate-500 mr-1">
+                    Gợi ý nhanh:
+                  </span>
+                  {QUICK_NOTES.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setNoteInput(preset)}
+                      className="relative z-20 cursor-pointer select-none px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-300 transition-colors"
+                    >
+                      <span className="pointer-events-none">{preset}</span>
+                    </button>
+                  ))}
                 </div>
-              </div>
-
-              <div className="hidden sm:flex flex-wrap items-center gap-1.5">
-                <span className="text-[11px] text-slate-500 mr-1">
-                  Gợi ý nhanh:
-                </span>
-                {QUICK_NOTES.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setNoteInput(preset)}
-                    className="relative z-20 cursor-pointer select-none px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] text-slate-300 transition-colors"
-                  >
-                    <span className="pointer-events-none">{preset}</span>
-                  </button>
-                ))}
-              </div>
-            </form>
+              </form>
+            )}
           </div>
         </div>
       )}

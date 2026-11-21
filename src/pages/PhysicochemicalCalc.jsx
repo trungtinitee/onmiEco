@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const PHYSICO_EQUIPMENT_LABELS = {
   coagulation: 'Bể Keo tụ',
@@ -112,11 +113,11 @@ export default function PhysicochemicalCalc() {
   const [activeTab, setActiveTab] = useState('coagulation');
 
   // --- Shared Water Temperature & Efficiency ---
-  const [waterTemp, setWaterTemp] = useState(25);
+  const [waterTemp, setWaterTemp] = useProjectState('physico_waterTemp', 25);
   const mu = getDynamicViscosity(waterTemp);
 
   // --- Tab 1: Keo tụ ---
-  const [coag, setCoag] = useState({
+  const [coag, setCoag] = useProjectState('physico_coag', {
     shape: 'Vuông',
     retentionSec: 45,
     gTarget: 750, // s^-1 (chuẩn 500 - 1000)
@@ -126,7 +127,7 @@ export default function PhysicochemicalCalc() {
   });
 
   // --- Tab 2: Tạo bông ---
-  const [floc, setFloc] = useState({
+  const [floc, setFloc] = useProjectState('physico_floc', {
     shape: 'Chữ nhật',
     retentionMin: 25,
     gTarget: 45, // s^-1 (chuẩn 20 - 80)
@@ -136,7 +137,7 @@ export default function PhysicochemicalCalc() {
   });
 
   // --- Tab 3: Lắng hóa lý ---
-  const [sed, setSed] = useState({
+  const [sed, setSed] = useProjectState('physico_sed', {
     shape: 'Tròn',
     surfaceLoadTarget: 1.2, // m3/m2.h (max chuẩn 1.8)
     surfaceLoadMax: 1.8,
@@ -148,14 +149,17 @@ export default function PhysicochemicalCalc() {
   });
 
   // Override state for first 3 tanks
-  const [tankOverrides, setTankOverrides] = useState({
-    coagulation: null,
-    flocculation: null,
-    sedimentation: null,
-  });
+  const [tankOverrides, setTankOverrides] = useProjectState(
+    'physico_tankOverrides',
+    {
+      coagulation: null,
+      flocculation: null,
+      sedimentation: null,
+    }
+  );
 
   // --- Tab 4: Tuyển nổi áp lực DAF ---
-  const [dafParams, setDafParams] = useState({
+  const [dafParams, setDafParams] = useProjectState('physico_dafParams', {
     shape: 'Chữ nhật',
     retentionMin: 25,
     recyclePct: 30,
@@ -164,7 +168,10 @@ export default function PhysicochemicalCalc() {
     depthH: 2.2,
     ratioLW: 2.0,
   });
-  const [dafOverride, setDafOverride] = useState(null);
+  const [dafOverride, setDafOverride] = useProjectState(
+    'physico_dafOverride',
+    null
+  );
 
   const qMaxM3s = hydraulics.qMaxHour / 3600;
 
@@ -270,8 +277,8 @@ export default function PhysicochemicalCalc() {
           actual.area > 0 ? hydraulics.qMaxHour / actual.area : 0;
         return {
           metricLabel: 'Tải trọng bề mặt thực (q₀)',
-          metricTheo: `≤ ${sed.surfaceLoadMax.toFixed(2)} m³/m²·h`,
-          metricActual: `${q0Actual.toFixed(2)} m³/m²·h`,
+          metricTheo: `≤ ${Number(sed.surfaceLoadMax || 0).toFixed(2)} m³/m²·h`,
+          metricActual: `${Number(q0Actual || 0).toFixed(2)} m³/m²·h`,
           extraOk: hydraulics.qDay > 0 && q0Actual <= sed.surfaceLoadMax,
           extraStatus:
             hydraulics.qDay > 0 && q0Actual <= sed.surfaceLoadMax

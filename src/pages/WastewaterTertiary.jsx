@@ -9,6 +9,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const TERTIARY_EQUIPMENT_LABELS = {
   pressure_filter: 'Bồn Lọc áp lực đa tầng',
@@ -30,7 +31,7 @@ export default function WastewaterTertiary() {
   const [mediaViewMode, setMediaViewMode] = useState('table');
 
   // --- Tab 1: Bồn Lọc áp lực ---
-  const [filter, setFilter] = useState({
+  const [filter, setFilter] = useProjectState('tertiary_filter', {
     numTanks: 2,
     shape: 'Tròn',
     filtrationRateTarget: 8.0, // m/h (chuẩn 5 - 12)
@@ -42,21 +43,27 @@ export default function WastewaterTertiary() {
     carbonHeight: 0.5, // Than hoạt tính (500 kg/m3)
     manganeseHeight: 0.0, // Quặng Mangan (1800 kg/m3)
   });
-  const [filterDiameterOverrideM, setFilterDiameterOverrideM] = useState(null);
+  const [filterDiameterOverrideM, setFilterDiameterOverrideM] = useProjectState(
+    'tertiary_filterDiameterOverrideM',
+    null
+  );
 
   // --- Tab 2: Khử trùng ---
-  const [disinfection, setDisinfection] = useState({
-    method: 'Clo / Javen',
-    chlorineDoseMgL: 8, // mg/L
-    javenPct: 10, // % NaOCl hoạt tính
-    contactMinutes: 30, // phút
-    tankDepthH: 2.5, // m
-    uvDoseMjCm2: 40, // mJ/cm2
-    uvSpecificWattPerM3h: 25, // W / (m3/h)
-    uvLampWatt: 150, // W / bóng
-    ozoneDoseMgL: 5, // mg/L
-    ozoneKwhPerKg: 15, // kWh / kg O3
-  });
+  const [disinfection, setDisinfection] = useProjectState(
+    'tertiary_disinfection',
+    {
+      method: 'Clo / Javen',
+      chlorineDoseMgL: 8, // mg/L
+      javenPct: 10, // % NaOCl hoạt tính
+      contactMinutes: 30, // phút
+      tankDepthH: 2.5, // m
+      uvDoseMjCm2: 40, // mJ/cm2
+      uvSpecificWattPerM3h: 25, // W / (m3/h)
+      uvLampWatt: 150, // W / bóng
+      ozoneDoseMgL: 5, // mg/L
+      ozoneKwhPerKg: 15, // kWh / kg O3
+    }
+  );
 
   // --- Pressure Filter Calculations ---
   const nFilterTanks = Math.max(1, Number(filter.numTanks) || 1);

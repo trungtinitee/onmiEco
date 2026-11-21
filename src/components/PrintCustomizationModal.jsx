@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 const PRINT_OPTION_ITEMS = [
   {
@@ -168,6 +169,8 @@ const PrintCustomizationModal = memo(function PrintCustomizationModal() {
     confirmAndPrint,
   ]);
 
+  useBodyScrollLock(isOpen);
+
   if (typeof document === 'undefined' || !isOpen) return null;
 
   return createPortal(
@@ -180,7 +183,7 @@ const PrintCustomizationModal = memo(function PrintCustomizationModal() {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+        className="w-full sm:max-w-lg max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">

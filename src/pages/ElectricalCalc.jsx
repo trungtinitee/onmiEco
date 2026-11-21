@@ -14,6 +14,7 @@ import {
   StatusBanner,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const ELEC_EQUIPMENT_LABELS = {
   switchgear: 'Tủ điện động lực & Khí cụ điện',
@@ -69,7 +70,7 @@ export default function ElectricalCalc() {
   const [activeTab, setActiveTab] = useState('switchgear');
 
   // --- TAB 1: KHÍ CỤ ĐIỆN ---
-  const [elec, setElec] = useState({
+  const [elec, setElec] = useProjectState('elec_elec', {
     powerKw: 15,
     voltage: 380, // 380 (3 pha) | 220 (1 pha)
     cosPhi: 0.85,
@@ -78,11 +79,11 @@ export default function ElectricalCalc() {
     cableLengthM: 35,
   });
   // Override MCB & Cáp thực tế
-  const [mcbOverrideA, setMcbOverrideA] = useState(null);
-  const [cableOverrideMm2, setCableOverrideMm2] = useState(null);
+  const [mcbOverrideA, setMcbOverrideA] = useProjectState('elec_mcbOverrideA', null);
+  const [cableOverrideMm2, setCableOverrideMm2] = useProjectState('elec_cableOverrideMm2', null);
 
   // --- TAB 2: OXY & MÁY THỔI KHÍ ---
-  const [oxy, setOxy] = useState({
+  const [oxy, setOxy] = useProjectState('elec_oxy', {
     useStep4Nod: true, // Tự động lấy NOD (4.57 kg O2/kg NH4+) từ Bước 4
     bodIn: bioQuality.bodIn,
     bodOut: bioQuality.bodOut,

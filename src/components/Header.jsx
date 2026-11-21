@@ -6,8 +6,10 @@ import {
   FolderKanban,
   MapPin,
   Menu,
+  Moon,
   Pencil,
   Plus,
+  Sun,
   Trash2,
   UserCheck,
 } from 'lucide-react';
@@ -78,7 +80,7 @@ const HeaderProjectDropdown = memo(function HeaderProjectDropdown() {
           }`}
         >
           <FolderKanban className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-400 shrink-0" />
-          <span className="font-semibold truncate max-w-[130px] sm:max-w-[200px] md:max-w-xs">
+          <span className="font-semibold truncate max-w-[110px] sm:max-w-[200px] md:max-w-xs">
             {currentProject.name}
           </span>
           <ChevronDown
@@ -226,12 +228,33 @@ const HeaderProjectDropdown = memo(function HeaderProjectDropdown() {
 
       <ProjectModals
         activeModal={activeModal}
-        onOpenModal={setActiveModal}
         onClose={handleCloseModal}
         deleteTarget={deleteTarget}
         onClearDeleteTarget={handleClearDeleteTarget}
       />
     </>
+  );
+});
+
+const HeaderThemeToggle = memo(function HeaderThemeToggle() {
+  const { theme, toggleTheme } = useAppContext();
+  const isLight = theme === 'light';
+
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      title="Chuyển chế độ Sáng / Tối"
+      aria-label="Chuyển chế độ Sáng / Tối"
+      aria-pressed={isLight}
+      className="inline-flex items-center justify-center min-h-[38px] min-w-[38px] rounded-lg border border-slate-700/80 bg-slate-800/40 hover:bg-slate-800 hover:border-slate-600 text-slate-200 transition-colors cursor-pointer shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+    >
+      {isLight ? (
+        <Moon className="h-4 w-4 text-slate-700" />
+      ) : (
+        <Sun className="h-4 w-4 text-amber-400" />
+      )}
+    </button>
   );
 });
 
@@ -285,7 +308,10 @@ const Header = memo(function Header({
         </div>
       </div>
 
-      <HeaderProjectDropdown />
+      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 shrink-0">
+        <HeaderThemeToggle />
+        <HeaderProjectDropdown />
+      </div>
     </header>
   );
 });

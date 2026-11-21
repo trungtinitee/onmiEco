@@ -2,16 +2,14 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AlertTriangle,
-  Check,
   FolderKanban,
-  MapPin,
   Plus,
   Save,
   Trash2,
-  UserCheck,
   X,
 } from 'lucide-react';
 import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 
 function formatShortDate(iso) {
   if (!iso) return '';
@@ -22,20 +20,17 @@ function formatShortDate(iso) {
 
 /**
  * Bộ Modal Quản lý Dự án:
- * - activeModal: null | 'switch' | 'info' | 'create'
+ * - activeModal: null | 'info' | 'create'
  * - Render qua createPortal vào document.body để không bị Sidebar/Header overflow cắt khung.
  */
 const ProjectModals = memo(function ProjectModals({
   activeModal,
-  onOpenModal,
   onClose,
   deleteTarget = null,
   onClearDeleteTarget,
 }) {
   const {
-    projectList,
     currentProject,
-    selectProject,
     createProject,
     updateProject,
     deleteProject,
@@ -43,10 +38,8 @@ const ProjectModals = memo(function ProjectModals({
 
   const [newProjectName, setNewProjectName] = useState('');
   const [createError, setCreateError] = useState('');
-  const [internalDeleteTarget, setInternalDeleteTarget] = useState(null);
-  const projectToDelete = deleteTarget || internalDeleteTarget;
+  const projectToDelete = deleteTarget;
   const clearDeleteTarget = useCallback(() => {
-    setInternalDeleteTarget(null);
     onClearDeleteTarget?.();
   }, [onClearDeleteTarget]);
 
@@ -65,10 +58,11 @@ const ProjectModals = memo(function ProjectModals({
 
   // Đồng bộ form khi mở Modal tương ứng
   useEffect(() => {
+    let focusTimer;
     if (activeModal === 'create') {
       setNewProjectName('');
       setCreateError('');
-      window.setTimeout(() => createInputRef.current?.focus(), 20);
+      focusTimer = window.setTimeout(() => createInputRef.current?.focus(), 20);
     } else if (activeModal === 'info') {
       setInfoForm({
         name: currentProject?.name || '',
@@ -79,8 +73,11 @@ const ProjectModals = memo(function ProjectModals({
         notes: currentProject?.notes || '',
       });
       setInfoError('');
-      window.setTimeout(() => infoNameInputRef.current?.focus(), 20);
+      focusTimer = window.setTimeout(() => infoNameInputRef.current?.focus(), 20);
     }
+    return () => {
+      if (focusTimer) window.clearTimeout(focusTimer);
+    };
   }, [activeModal, currentProject]);
 
   // Đóng Modal bằng phím Escape
@@ -135,161 +132,14 @@ const ProjectModals = memo(function ProjectModals({
     clearDeleteTarget();
   }, [deleteProject, projectToDelete, clearDeleteTarget]);
 
+  useBodyScrollLock(Boolean(activeModal || projectToDelete));
+
   if (typeof document === 'undefined') return null;
   if (!activeModal && !projectToDelete) return null;
 
-  const canDelete = projectList.length > 1;
-
   return createPortal(
     <>
-      {/* 1. Modal Chọn / Đổi Dự án */}
-      {activeModal === 'switch' && !projectToDelete && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="switch-project-title"
-          onClick={onClose}
-          className="print:hidden fixed inset-0 z-[130] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
-          >
-            <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <FolderKanban className="h-5 w-5 text-emerald-400 shrink-0" />
-                <h2
-                  id="switch-project-title"
-                  className="text-base font-bold text-slate-100 truncate"
-                >
-                  Chọn Dự án làm việc
-                </h2>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-mono font-semibold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">
-                  {projectList.length} dự án
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Đóng cửa sổ"
-                className="relative z-20 cursor-pointer p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800"
-              >
-                <X className="h-5 w-5 pointer-events-none" />
-              </button>
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-slate-800/80 p-3 sm:p-4">
-              {projectList.map((project) => {
-                const isActive = project.id === currentProject.id;
-                return (
-                  <div
-                    key={project.id}
-                    className={`flex items-center justify-between gap-2.5 rounded-xl px-3.5 py-3 transition-colors ${
-                      isActive
-                        ? 'bg-emerald-950/45 border border-emerald-500/35'
-                        : 'hover:bg-slate-800/70 border border-transparent'
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        selectProject(project.id);
-                        onClose();
-                      }}
-                      className="relative z-20 cursor-pointer flex-1 min-w-0 flex items-start gap-3 text-left"
-                    >
-                      <span
-                        className={`mt-0.5 flex h-5 w-5 items-center justify-center rounded-full border shrink-0 pointer-events-none ${
-                          isActive
-                            ? 'bg-emerald-500 border-emerald-400 text-slate-950'
-                            : 'border-slate-600 text-transparent'
-                        }`}
-                      >
-                        <Check className="h-3.5 w-3.5 pointer-events-none" />
-                      </span>
-
-                      <div className="min-w-0 flex-1 space-y-1 pointer-events-none">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`text-sm font-semibold truncate ${
-                              isActive ? 'text-emerald-300' : 'text-slate-100'
-                            }`}
-                          >
-                            {project.name}
-                          </span>
-                          {project.capacity && (
-                            <span className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-sky-300">
-                              {project.capacity}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-slate-400">
-                          {project.investor && (
-                            <span className="inline-flex items-center gap-1 truncate max-w-full">
-                              <UserCheck className="h-3 w-3 text-slate-500 shrink-0" />
-                              <span className="truncate">{project.investor}</span>
-                            </span>
-                          )}
-                          {project.location && (
-                            <span className="inline-flex items-center gap-1 truncate max-w-full">
-                              <MapPin className="h-3 w-3 text-slate-500 shrink-0" />
-                              <span className="truncate">{project.location}</span>
-                            </span>
-                          )}
-                          {project.createdAt && (
-                            <span>Tạo: {formatShortDate(project.createdAt)}</span>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={!canDelete}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!canDelete) return;
-                        setInternalDeleteTarget(project);
-                      }}
-                      aria-label={`Xóa dự án ${project.name}`}
-                      title={
-                        canDelete
-                          ? `Xóa dự án "${project.name}"`
-                          : 'Không thể xóa dự án cuối cùng'
-                      }
-                      className="relative z-20 cursor-pointer select-none shrink-0 inline-flex items-center justify-center min-h-[36px] min-w-[36px] p-1.5 rounded-lg bg-slate-800/90 hover:bg-red-950/80 disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-slate-800/90 border border-slate-700 hover:border-red-500/50 text-red-400 transition-colors"
-                    >
-                      <Trash2 className="h-4 w-4 pointer-events-none" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="sticky bottom-0 z-20 flex items-center justify-between gap-2.5 bg-slate-900/90 backdrop-blur border-t border-slate-800 p-3 sm:p-4 shrink-0">
-              <button
-                type="button"
-                onClick={() => onOpenModal?.('create')}
-                className="relative z-20 cursor-pointer select-none inline-flex items-center gap-1.5 min-h-[40px] px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-semibold text-white transition-colors"
-              >
-                <Plus className="h-4 w-4 pointer-events-none shrink-0" />
-                <span className="pointer-events-none">Tạo dự án mới</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onClose}
-                className="relative z-20 cursor-pointer select-none min-h-[40px] px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs sm:text-sm font-medium text-slate-300"
-              >
-                <span className="pointer-events-none">Đóng</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. Modal Thông tin Dự án */}
+      {/* 1. Modal Thông tin Dự án */}
       {activeModal === 'info' && (
         <div
           role="dialog"
@@ -300,7 +150,7 @@ const ProjectModals = memo(function ProjectModals({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-lg max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <div>
@@ -508,7 +358,7 @@ const ProjectModals = memo(function ProjectModals({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h2
@@ -595,7 +445,7 @@ const ProjectModals = memo(function ProjectModals({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h2

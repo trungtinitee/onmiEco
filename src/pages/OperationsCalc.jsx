@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import {
+  AlertTriangle,
   Beaker,
+  CheckCircle2,
   ClipboardList,
   Droplets,
   FlaskConical,
+  Gauge,
+  RefreshCw,
   Sparkles,
 } from 'lucide-react';
 import { useAppContext } from '../context/AppContext';
@@ -13,12 +17,14 @@ import {
   ViewModeToggle,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const OPS_EQUIPMENT_LABELS = {
   nutrient: 'Hệ thống Châm Dinh dưỡng (N, P)',
   carbon: 'Hệ thống Châm Carbon (Mật rỉ/Methanol)',
   alkalinity: 'Hệ thống Châm Kiềm (NaHCO₃)',
   mbr_clean: 'Hệ thống Rửa màng MBR (MC/RC)',
+  dosing_pump: 'Hệ thống Bơm Định lượng Hóa chất',
 };
 
 const OPS_TABS = [
@@ -26,6 +32,7 @@ const OPS_TABS = [
   { id: 'carbon', label: 'Carbon khử Nitơ', icon: Beaker },
   { id: 'alkalinity', label: 'Kiềm NaHCO₃ (7,14)', icon: Droplets },
   { id: 'mbr_clean', label: 'Rửa màng MBR (MC/RC)', icon: Sparkles },
+  { id: 'dosing_pump', label: 'Bơm Định lượng', icon: Gauge },
 ];
 
 export default function OperationsCalc() {
@@ -34,7 +41,7 @@ export default function OperationsCalc() {
   const [mbrViewMode, setMbrViewMode] = useState('table');
 
   // --- TAB 1: DINH DƯỠNG (BOD:N:P = 100:5:1) ---
-  const [nutrient, setNutrient] = useState({
+  const [nutrient, setNutrient] = useProjectState('ops_nutrient', {
     bodMgL: 400,
     nAvailMgL: 5,
     pAvailMgL: 0.5,
@@ -43,7 +50,7 @@ export default function OperationsCalc() {
   });
 
   // --- TAB 2: CARBON BÙ KHỬ NITƠ ---
-  const [carbon, setCarbon] = useState({
+  const [carbon, setCarbon] = useProjectState('ops_carbon', {
     no3InMgL: 35,
     no3OutMgL: 7,
     bodAvailAnoxicMgL: 40, // BOD sẵn có tham gia khử NO3 ở Anoxic
@@ -51,7 +58,7 @@ export default function OperationsCalc() {
   });
 
   // --- TAB 3: KIỀM NaHCO3 BÙ NITRAT HÓA ---
-  const [alk, setAlk] = useState({
+  const [alk, setAlk] = useProjectState('ops_alk', {
     useStep4Nh4: true,
     nh4InMgL: bioQuality.nh4In,
     nh4OutMgL: bioQuality.nh4Out,
@@ -62,7 +69,7 @@ export default function OperationsCalc() {
   });
 
   // --- TAB 4: RỬA MÀNG MBR (MC & RC) ---
-  const [mbr, setMbr] = useState({
+  const [mbr, setMbr] = useProjectState('ops_mbr', {
     membraneAreaM2: 500,
     mcSpecVolLM2: 2.5, // L dung dịch / m2 màng cho rửa bảo trì MC
     mcJavenPpm: 400, // chuẩn 300 - 500 ppm
@@ -72,6 +79,21 @@ export default function OperationsCalc() {
     rcAcidPpm: 1500, // chuẩn 1000 - 2000 ppm
     javenPct: 10, // NaOCl thương phẩm 10% (hoặc 12%)
     javenDensity: 1.15, // kg/L
+  });
+
+  // --- TAB 5: TÍNH LƯU LƯỢNG BƠM ĐỊNH LƯỢNG ---
+  const designQAvgM3h = Number(hydraulics?.qAvgM3h ?? hydraulics?.qHour ?? 0);
+  const initialDosingQ =
+    Number.isFinite(designQAvgM3h) && designQAvgM3h > 0
+      ? Number(designQAvgM3h.toFixed(2))
+      : 10;
+  const [dosingPump, setDosingPump] = useProjectState('ops_dosingPump', {
+    qWaterM3h: initialDosingQ,
+    dosageMgL: 50,
+    chemMassKg: 25,
+    tankVolL: 500,
+    purityPct: 100,
+    pumpMaxLh: 20,
   });
 
   const qDay = hydraulics.qDay;
@@ -190,6 +212,35 @@ export default function OperationsCalc() {
   const isRcJavenOk = mbr.rcJavenPpm >= 1000 && mbr.rcJavenPpm <= 3000;
   const isRcAcidOk = mbr.rcAcidPpm >= 1000 && mbr.rcAcidPpm <= 2000;
   const isMbrAllOk = areaM2 > 0 && isMcPpmOk && isRcJavenOk && isRcAcidOk;
+
+  // === CALCULATIONS: 5. TÍNH LƯU LƯỢNG BƠM ĐỊNH LƯỢNG ===
+  const dpQWaterM3h = Math.max(0, Number(dosingPump.qWaterM3h) || 0);
+  const dpDosageMgL = Math.max(0, Number(dosingPump.dosageMgL) || 0);
+  const dpChemMassKg = Math.max(0, Number(dosingPump.chemMassKg) || 0);
+  const dpTankVolL = Math.max(0, Number(dosingPump.tankVolL) || 0);
+  const dpPurityPct = Math.min(
+    100,
+    Math.max(0, Number(dosingPump.purityPct) || 0)
+  );
+  const dpPumpMaxLh = Math.max(0, Number(dosingPump.pumpMaxLh) || 0);
+
+  const dpPureMassG = dpChemMassKg * 1000 * (dpPurityPct / 100);
+  const dpTankConcGL = dpTankVolL > 0 ? dpPureMassG / dpTankVolL : 0;
+  const dpTankConcPct = dpTankConcGL / 10;
+  const dpReqPureGh = dpQWaterM3h * dpDosageMgL;
+  const dpPumpFlowLh = dpTankConcGL > 0 ? dpReqPureGh / dpTankConcGL : 0;
+  const dpPumpFlowMlMin = (dpPumpFlowLh * 1000) / 60;
+  const dpTankDurationH = dpPumpFlowLh > 0 ? dpTankVolL / dpPumpFlowLh : 0;
+  const dpStrokePct = dpPumpMaxLh > 0 ? (dpPumpFlowLh / dpPumpMaxLh) * 100 : 0;
+
+  const dpStrokeStatus =
+    dpStrokePct > 100
+      ? 'over'
+      : dpStrokePct > 0 && dpStrokePct < 15
+      ? 'low'
+      : dpStrokePct >= 15 && dpStrokePct <= 100
+      ? 'optimal'
+      : 'idle';
 
   return (
     <div className="space-y-6">
@@ -1010,6 +1061,329 @@ export default function OperationsCalc() {
                 ))}
               </div>
             )}
+          </section>
+        </div>
+      )}
+
+      {/* TAB 5: TÍNH LƯU LƯỢNG BƠM ĐỊNH LƯỢNG */}
+      {activeTab === 'dosing_pump' && (
+        <div className="space-y-6">
+          <section className="rounded-xl bg-slate-800 border border-slate-700/80 p-5 sm:p-6 space-y-5 print:bg-transparent print:border print:border-gray-300 print:shadow-none print:text-gray-900">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-700/70">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">
+                  1. Thông số Pha Hóa chất &amp; Bơm Định lượng
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Tính nhanh lưu lượng bơm (L/h), hiệu chuẩn cốc đong (mL/phút),
+                  thời gian hết bồn và % hành trình vặn núm bơm.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (designQAvgM3h > 0) {
+                    setDosingPump((p) => ({
+                      ...p,
+                      qWaterM3h: Number(designQAvgM3h.toFixed(2)),
+                    }));
+                  }
+                }}
+                disabled={designQAvgM3h <= 0}
+                title={`Đồng bộ lưu lượng thiết kế (${Number(designQAvgM3h || 0).toFixed(2)} m³/h)`}
+                className="no-print print:hidden inline-flex items-center gap-1.5 min-h-[36px] px-3 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/20 border border-emerald-500/35 text-xs font-semibold text-emerald-400 disabled:opacity-40 transition-colors cursor-pointer shrink-0"
+              >
+                <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Lấy từ Q thiết kế ({Number(designQAvgM3h || 0).toFixed(1)} m³/h)
+                </span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <NumberField
+                id="dp-qwater"
+                label="Lưu lượng nước thải cần châm"
+                unit="m³/h"
+                value={dosingPump.qWaterM3h}
+                min={0}
+                max={100000}
+                step={1}
+                onChange={(v) => setDosingPump((p) => ({ ...p, qWaterM3h: v }))}
+                helperText="Lưu lượng thực tế đang chạy qua cụm châm hóa chất"
+              />
+
+              <NumberField
+                id="dp-dosage"
+                label="Liều lượng hóa chất sử dụng"
+                unit="mg/L (g/m³)"
+                value={dosingPump.dosageMgL}
+                min={0}
+                max={50000}
+                step={5}
+                onChange={(v) => setDosingPump((p) => ({ ...p, dosageMgL: v }))}
+                helperText="Nồng độ hoạt chất cần châm vào dòng nước (1 mg/L = 1 g/m³)"
+              />
+
+              <NumberField
+                id="dp-mass"
+                label="Lượng hóa chất cân pha vào bồn"
+                unit="kg"
+                value={dosingPump.chemMassKg}
+                min={0}
+                max={50000}
+                step={1}
+                onChange={(v) =>
+                  setDosingPump((p) => ({ ...p, chemMassKg: v }))
+                }
+                helperText="Khối lượng hóa chất thương phẩm cân/đổ vào 1 bồn pha"
+              />
+
+              <NumberField
+                id="dp-tank"
+                label="Thể tích bồn pha hóa chất"
+                unit="Lít"
+                value={dosingPump.tankVolL}
+                min={1}
+                max={100000}
+                step={50}
+                onChange={(v) => setDosingPump((p) => ({ ...p, tankVolL: v }))}
+                helperText="Tổng thể tích dung dịch sau khi hòa tan đầy mức vận hành"
+              />
+
+              <NumberField
+                id="dp-purity"
+                label="Nồng độ nguyên chất / Độ tinh khiết"
+                unit="%"
+                value={dosingPump.purityPct}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(v) => setDosingPump((p) => ({ ...p, purityPct: v }))}
+                helperText="VD: 100% nếu tính theo thương phẩm, 99% NaOH vảy, 32% NaOH lỏng, 10% Javen"
+              />
+
+              <NumberField
+                id="dp-pumpmax"
+                label="Lưu lượng max của bơm định lượng"
+                unit="L/h"
+                value={dosingPump.pumpMaxLh}
+                min={0}
+                max={10000}
+                step={1}
+                onChange={(v) => setDosingPump((p) => ({ ...p, pumpMaxLh: v }))}
+                helperText="Tùy chọn — dùng để tính % hành trình vặn núm bơm (Stroke %)"
+              />
+            </div>
+
+            {/* 2 Thẻ Kết quả Chính nổi bật */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/40 p-4 sm:p-5 space-y-1.5 print:bg-transparent print:border-gray-400 print:break-inside-avoid">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-emerald-400">
+                    Lưu lượng bơm định lượng cần chạy
+                  </span>
+                  <Gauge className="h-4 w-4 text-emerald-400 shrink-0" />
+                </div>
+                <div className="font-mono text-2xl sm:text-3xl font-extrabold text-emerald-400 tabular-nums">
+                  {Number(dpPumpFlowLh || 0).toFixed(2)}{' '}
+                  <span className="text-base sm:text-lg font-semibold">L/h</span>
+                </div>
+                <p className="text-xs text-slate-400 font-mono tabular-nums">
+                  Nhu cầu hoạt chất = {Number(dpReqPureGh || 0).toFixed(1)} g/giờ
+                  ({(Number(dpReqPureGh || 0) / 1000).toFixed(3)} kg/h)
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-sky-500/10 border border-sky-500/30 p-4 sm:p-5 space-y-1.5 print:bg-transparent print:border-gray-400 print:break-inside-avoid">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-sky-400">
+                    Lưu lượng hiệu chuẩn cốc đong
+                  </span>
+                  <Beaker className="h-4 w-4 text-sky-400 shrink-0" />
+                </div>
+                <div className="font-mono text-2xl sm:text-3xl font-extrabold text-sky-300 tabular-nums">
+                  {Number(dpPumpFlowMlMin || 0).toFixed(1)}{' '}
+                  <span className="text-base sm:text-lg font-semibold">
+                    mL/phút
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 font-mono tabular-nums">
+                  Tương đương {(Number(dpPumpFlowMlMin || 0) / 60).toFixed(2)}{' '}
+                  mL/giây (đong kiểm tra trong 1 phút)
+                </p>
+              </div>
+            </div>
+
+            {/* 3 Thẻ Thông số Phụ */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+              <div className="rounded-xl bg-slate-900/60 border border-slate-700/70 p-4 space-y-1 print:bg-transparent print:border-gray-300 print:break-inside-avoid">
+                <div className="text-xs font-medium text-slate-400">
+                  Nồng độ dung dịch trong bồn
+                </div>
+                <div className="font-mono text-lg font-bold text-slate-100 tabular-nums">
+                  {Number(dpTankConcGL || 0).toFixed(2)} g/L
+                </div>
+                <div className="font-mono text-xs text-emerald-400 tabular-nums">
+                  ≈ {Number(dpTankConcPct || 0).toFixed(2)}% (w/v) ·{' '}
+                  {(Number(dpPureMassG || 0) / 1000).toFixed(2)} kg hoạt chất
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-900/60 border border-slate-700/70 p-4 space-y-1 print:bg-transparent print:border-gray-300 print:break-inside-avoid">
+                <div className="text-xs font-medium text-slate-400">
+                  Thời gian dùng hết 1 bồn pha
+                </div>
+                <div className="font-mono text-lg font-bold text-slate-100 tabular-nums">
+                  {Number(dpTankDurationH || 0).toFixed(1)} giờ
+                </div>
+                <div className="font-mono text-xs text-slate-400 tabular-nums">
+                  ≈ {(Number(dpTankDurationH || 0) / 24).toFixed(2)} ngày vận
+                  hành liên tục
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-900/60 border border-slate-700/70 p-4 space-y-1.5 print:bg-transparent print:border-gray-300 print:break-inside-avoid">
+                <div className="flex items-center justify-between gap-2 text-xs font-medium text-slate-400">
+                  <span>% Hành trình bơm (Stroke)</span>
+                  <span className="font-mono text-[11px] tabular-nums">
+                    Max {Number(dpPumpMaxLh || 0).toFixed(1)} L/h
+                  </span>
+                </div>
+                <div
+                  className={`font-mono text-lg font-bold tabular-nums ${
+                    dpStrokeStatus === 'over'
+                      ? 'text-red-400'
+                      : dpStrokeStatus === 'low'
+                      ? 'text-amber-400'
+                      : dpStrokeStatus === 'optimal'
+                      ? 'text-emerald-400'
+                      : 'text-slate-300'
+                  }`}
+                >
+                  {Number(dpStrokePct || 0).toFixed(1)}%
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-800 border border-slate-700/70 overflow-hidden print:hidden">
+                  <div
+                    style={{
+                      width: `${Math.min(100, Math.max(0, Number(dpStrokePct || 0)))}%`,
+                    }}
+                    className={`h-full transition-all duration-200 ${
+                      dpStrokeStatus === 'over'
+                        ? 'bg-red-600'
+                        : dpStrokeStatus === 'low'
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                    }`}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Cảnh báo vận hành theo % hành trình bơm */}
+            {dpStrokeStatus === 'over' && (
+              <div
+                role="status"
+                className="rounded-xl border border-red-500/40 bg-red-500/15 p-4 flex items-start gap-3 text-red-200 print:break-inside-avoid"
+              >
+                <AlertTriangle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="text-sm font-bold tracking-tight">
+                    VƯỢT CÔNG SUẤT BƠM ({Number(dpStrokePct || 0).toFixed(1)}%)
+                  </div>
+                  <p className="text-xs sm:text-sm leading-relaxed">
+                    Vượt công suất bơm! Cần tăng nồng độ pha hoặc đổi bơm lớn
+                    hơn (cần {Number(dpPumpFlowLh || 0).toFixed(2)} L/h &gt; max{' '}
+                    {Number(dpPumpMaxLh || 0).toFixed(1)} L/h).
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {dpStrokeStatus === 'low' && (
+              <div
+                role="status"
+                className="rounded-xl border border-amber-500/40 bg-amber-500/15 p-4 flex items-start gap-3 text-amber-200 print:break-inside-avoid"
+              >
+                <AlertTriangle className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="text-sm font-bold tracking-tight">
+                    CẢNH BÁO HÀNH TRÌNH BƠM THẤP (
+                    {Number(dpStrokePct || 0).toFixed(1)}%)
+                  </div>
+                  <p className="text-xs sm:text-sm leading-relaxed">
+                    Hành trình bơm quá thấp (&lt;15%), độ chính xác kém. Nên pha
+                    loãng dung dịch hơn.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {dpStrokeStatus === 'optimal' && (
+              <div
+                role="status"
+                className="rounded-xl border border-emerald-500/40 bg-emerald-500/15 p-4 flex items-start gap-3 text-emerald-200 print:break-inside-avoid"
+              >
+                <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="text-sm font-bold tracking-tight">
+                    DẢI VẬN HÀNH TỐI ƯU ({Number(dpStrokePct || 0).toFixed(1)}%)
+                  </div>
+                  <p className="text-xs sm:text-sm leading-relaxed">
+                    Bơm hoạt động trong dải tối ưu (15% – 100%). Chỉnh núm hành
+                    trình khoảng {Number(dpStrokePct || 0).toFixed(0)}% và kiểm
+                    tra cốc đong đạt {Number(dpPumpFlowMlMin || 0).toFixed(1)}{' '}
+                    mL/phút.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {dpStrokeStatus === 'idle' && (
+              <div
+                role="status"
+                className="rounded-xl border border-slate-700/80 bg-slate-900/60 p-4 text-xs sm:text-sm text-slate-400 print:break-inside-avoid"
+              >
+                Nhập đầy đủ lưu lượng nước, liều lượng, khối lượng pha, thể tích
+                bồn và lưu lượng max của bơm (&gt; 0) để đánh giá % hành trình
+                vặn núm bơm.
+              </div>
+            )}
+
+            <SummaryTable
+              headers={[
+                'Thông số tính toán bơm định lượng',
+                'Công thức / Cơ sở',
+                'Kết quả',
+                'Ghi chú hiện trường',
+              ]}
+              rows={[
+                [
+                  'Khối lượng hoạt chất trong bồn',
+                  `${Number(dpChemMassKg || 0).toFixed(2)} kg × ${Number(dpPurityPct || 0).toFixed(1)}%`,
+                  `${Number(dpPureMassG || 0).toFixed(0)} g (${(Number(dpPureMassG || 0) / 1000).toFixed(2)} kg)`,
+                  'Tính theo nồng độ nguyên chất thực tế',
+                ],
+                [
+                  'Nồng độ dung dịch trong bồn pha',
+                  `M_hoạt chất / ${Number(dpTankVolL || 0).toFixed(0)} L`,
+                  `${Number(dpTankConcGL || 0).toFixed(2)} g/L (${Number(dpTankConcPct || 0).toFixed(2)}%)`,
+                  'Khuấy tan đều trước khi chạy bơm',
+                ],
+                [
+                  'Lượng hoạt chất cần châm mỗi giờ',
+                  `${Number(dpQWaterM3h || 0).toFixed(2)} m³/h × ${Number(dpDosageMgL || 0).toFixed(1)} mg/L`,
+                  `${Number(dpReqPureGh || 0).toFixed(1)} g/giờ`,
+                  'Tải lượng hóa chất yêu cầu theo lưu lượng nước',
+                ],
+                [
+                  'Lưu lượng bơm định lượng & cốc đong',
+                  'Q_bơm = Lượng châm / C_bồn',
+                  `${Number(dpPumpFlowLh || 0).toFixed(2)} L/h (${Number(dpPumpFlowMlMin || 0).toFixed(1)} mL/phút)`,
+                  `Hết 1 bồn sau ${Number(dpTankDurationH || 0).toFixed(1)} giờ · Stroke ${Number(dpStrokePct || 0).toFixed(1)}%`,
+                ],
+              ]}
+            />
           </section>
         </div>
       )}

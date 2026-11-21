@@ -78,15 +78,24 @@ export default function Dashboard() {
   return (
     <div className="space-y-8">
       {/* Welcome Hero Header */}
-      <section className="space-y-3 pb-4 border-b border-slate-800 print:border-gray-300">
-        <div className="space-y-1.5">
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight text-slate-100 text-balance max-w-4xl">
-            OmniEco - Hệ thống Tính toán &amp; Quản lý Kỹ thuật Môi trường
+      <section className="space-y-3 pb-5 border-b border-slate-800 print:border-gray-300 text-left">
+        <div className="space-y-2">
+          <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-tight text-slate-100 leading-tight text-balance">
+            <span className="text-slate-100">Omni</span>
+            <span className="text-emerald-400">Eco</span>
+            <span className="text-slate-500 font-normal mx-1.5 sm:mx-2">
+              —
+            </span>
+            <span>Kỹ thuật &amp; Vận hành Môi trường</span>
           </h1>
-          <p className="text-sm sm:text-base font-medium text-emerald-400">
-            Phát triển bởi Kỹ sư Tín
-          </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-md bg-emerald-500/15 border border-emerald-500/35 px-2.5 py-0.5 text-xs font-semibold text-emerald-400">
+              Phát triển bởi Kỹ sư Tín
+            </span>
+          </div>
         </div>
+
         <p className="text-sm sm:text-base text-slate-400 max-w-3xl leading-relaxed">
           Bộ công cụ tính toán thiết kế đa lĩnh vực dành cho công việc kỹ thuật
           môi trường: xử lý nước thải, nước cấp, khí thải, chất thải rắn, cơ

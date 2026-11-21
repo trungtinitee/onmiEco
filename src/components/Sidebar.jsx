@@ -294,7 +294,7 @@ const Sidebar = memo(function Sidebar({ isOpen, onClose, onNotify }) {
 
   const handleExportJson = useCallback(() => {
     exportProjectJson();
-    onNotify?.(true, 'Đã tải xuống file thiết kế JSON.');
+    onNotify?.(true, 'Đã tải xuống file sao lưu toàn bộ dự án (JSON).');
     onClose?.();
   }, [exportProjectJson, onNotify, onClose]);
 

@@ -4,8 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
+import { markLegacyEqMigrated, safeSetItem } from '../utils/storage';
 
 const AppContext = createContext(null);
 const AppActionsContext = createContext(null);
@@ -14,9 +16,13 @@ export const STORAGE_KEY = 'envirocalc_global_state_v1';
 export const PROJECTS_STORAGE_KEY = 'omniEco_Projects';
 export const ACTIVE_PROJECT_STORAGE_KEY = 'omniEco_ActiveProjectId';
 export const PRINT_OPTIONS_STORAGE_KEY = 'omniEco_PrintOptions';
+export const THEME_STORAGE_KEY = 'omniEco_Theme';
 export const DEFAULT_PROJECT_ID = 'default-project';
 export const DEFAULT_CONTRACTOR_NAME =
   'Công ty TNHH Tư vấn - Đầu tư Môi trường D-V-N';
+
+export const getDesignStorageKey = (projectId) =>
+  `omniEco_Design_${projectId || DEFAULT_PROJECT_ID}`;
 
 export const DEFAULT_PRINT_OPTIONS = {
   showCompanyHeader: true,
@@ -54,6 +60,26 @@ function loadInitialPrintOptions() {
   }
 }
 
+function loadInitialTheme() {
+  if (typeof window === 'undefined') return 'dark';
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light'
+      ? 'light'
+      : 'dark';
+  } catch {
+    return 'dark';
+  }
+}
+
+function applyThemeToDocument(theme) {
+  if (typeof document === 'undefined') return;
+  const normalized = theme === 'light' ? 'light' : 'dark';
+  const root = document.documentElement;
+  root.classList.remove('dark', 'light');
+  root.classList.add(normalized);
+  root.style.colorScheme = normalized;
+}
+
 function createDefaultProject() {
   return {
     id: DEFAULT_PROJECT_ID,
@@ -77,13 +103,22 @@ function migrateLegacyProjectDataIfNeeded() {
     const defaultBomKey = `omniEco_BOM_${DEFAULT_PROJECT_ID}`;
     const legacyBom = window.localStorage.getItem('omnieco_project_procurement');
     if (legacyBom !== null && window.localStorage.getItem(defaultBomKey) === null) {
-      window.localStorage.setItem(defaultBomKey, legacyBom);
+      safeSetItem(defaultBomKey, legacyBom);
     }
 
     const defaultLogsKey = `omniEco_Logs_${DEFAULT_PROJECT_ID}`;
     const legacyLogs = window.localStorage.getItem('dvn_operation_logs');
     if (legacyLogs !== null && window.localStorage.getItem(defaultLogsKey) === null) {
-      window.localStorage.setItem(defaultLogsKey, legacyLogs);
+      safeSetItem(defaultLogsKey, legacyLogs);
+    }
+
+    const defaultDesignKey = getDesignStorageKey(DEFAULT_PROJECT_ID);
+    const legacyDesign = window.localStorage.getItem(STORAGE_KEY);
+    if (
+      legacyDesign !== null &&
+      window.localStorage.getItem(defaultDesignKey) === null
+    ) {
+      safeSetItem(defaultDesignKey, legacyDesign);
     }
   } catch {
     // Ignore storage errors safely
@@ -131,11 +166,7 @@ function loadInitialProjects() {
     projectList = fallbackList;
   }
 
-  try {
-    window.localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectList));
-  } catch {
-    // Ignore storage quota errors
-  }
+  safeSetItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectList));
 
   let activeProjectId = projectList[0].id;
   try {
@@ -143,7 +174,7 @@ function loadInitialProjects() {
     if (savedActiveId && projectList.some((p) => p.id === savedActiveId)) {
       activeProjectId = savedActiveId;
     } else {
-      window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, activeProjectId);
+      safeSetItem(ACTIVE_PROJECT_STORAGE_KEY, activeProjectId);
     }
   } catch {
     // Ignore storage errors
@@ -178,90 +209,133 @@ const DEFAULT_WASTEWATER_POLLUTANTS = {
   tp: 8,
 };
 
-function loadInitialState() {
-  const fallback = {
+function createDefaultDesignData() {
+  return {
     globalQ: 1000,
     peakingFactor: 1.5,
-    bioQuality: DEFAULT_BIO_QUALITY,
-    wastewaterPollutants: DEFAULT_WASTEWATER_POLLUTANTS,
+    bioQuality: { ...DEFAULT_BIO_QUALITY },
+    wastewaterPollutants: { ...DEFAULT_WASTEWATER_POLLUTANTS },
   };
-  if (typeof window === 'undefined') return fallback;
+}
+
+function normalizeDesignData(parsed, fallback = createDefaultDesignData()) {
+  const q = Number(parsed?.globalQ);
+  const k = Number(parsed?.peakingFactor);
+  const bq = parsed?.bioQuality || {};
+  const wp = parsed?.wastewaterPollutants || {};
+
+  return {
+    globalQ: Number.isFinite(q) && q >= 0 ? q : fallback.globalQ,
+    peakingFactor:
+      Number.isFinite(k) && k >= 1 && k <= 5 ? k : fallback.peakingFactor,
+    bioQuality: {
+      tempC: Number.isFinite(Number(bq.tempC))
+        ? Number(bq.tempC)
+        : fallback.bioQuality.tempC,
+      bodIn: Number.isFinite(Number(bq.bodIn))
+        ? Number(bq.bodIn)
+        : fallback.bioQuality.bodIn,
+      bodOut: Number.isFinite(Number(bq.bodOut))
+        ? Number(bq.bodOut)
+        : fallback.bioQuality.bodOut,
+      nh4In: Number.isFinite(Number(bq.nh4In))
+        ? Number(bq.nh4In)
+        : fallback.bioQuality.nh4In,
+      nh4Out: Number.isFinite(Number(bq.nh4Out))
+        ? Number(bq.nh4Out)
+        : fallback.bioQuality.nh4Out,
+      hasAnoxic:
+        typeof bq.hasAnoxic === 'boolean'
+          ? bq.hasAnoxic
+          : fallback.bioQuality.hasAnoxic,
+      no3DenitrifiedMgL: Number.isFinite(Number(bq.no3DenitrifiedMgL))
+        ? Number(bq.no3DenitrifiedMgL)
+        : fallback.bioQuality.no3DenitrifiedMgL,
+    },
+    wastewaterPollutants: {
+      bod5: Number.isFinite(Number(wp.bod5))
+        ? Math.max(0, Number(wp.bod5))
+        : fallback.wastewaterPollutants.bod5,
+      cod: Number.isFinite(Number(wp.cod))
+        ? Math.max(0, Number(wp.cod))
+        : fallback.wastewaterPollutants.cod,
+      ss: Number.isFinite(Number(wp.ss))
+        ? Math.max(0, Number(wp.ss))
+        : fallback.wastewaterPollutants.ss,
+      tn: Number.isFinite(Number(wp.tn))
+        ? Math.max(0, Number(wp.tn))
+        : fallback.wastewaterPollutants.tn,
+      tp: Number.isFinite(Number(wp.tp))
+        ? Math.max(0, Number(wp.tp))
+        : fallback.wastewaterPollutants.tp,
+    },
+  };
+}
+
+function slugifyProjectName(name) {
+  const normalized = String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[đĐ]/g, 'd')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+  return normalized || 'du-an';
+}
+
+function getCompactDateStamp(date = new Date()) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}${mm}${dd}`;
+}
+
+function safeReadJsonKey(key, fallback) {
+  if (typeof window === 'undefined' || !key) return fallback;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
+function loadProjectDesignData(projectId) {
+  const fallback = createDefaultDesignData();
+  if (typeof window === 'undefined') return fallback;
+  const resolvedId = projectId || DEFAULT_PROJECT_ID;
+  const designKey = getDesignStorageKey(resolvedId);
+  try {
+    let raw = window.localStorage.getItem(designKey);
+    if (raw === null && resolvedId === DEFAULT_PROJECT_ID) {
+      const legacyRaw = window.localStorage.getItem(STORAGE_KEY);
+      if (legacyRaw !== null) {
+        safeSetItem(designKey, legacyRaw);
+        raw = legacyRaw;
+      }
+    }
     if (!raw) return fallback;
     const parsed = JSON.parse(raw);
-    const q = Number(parsed?.globalQ);
-    const k = Number(parsed?.peakingFactor);
-    const bq = parsed?.bioQuality || {};
-    const wp = parsed?.wastewaterPollutants || {};
-
-    return {
-      globalQ: Number.isFinite(q) && q >= 0 ? q : fallback.globalQ,
-      peakingFactor:
-        Number.isFinite(k) && k >= 1 && k <= 5 ? k : fallback.peakingFactor,
-      bioQuality: {
-        tempC: Number.isFinite(Number(bq.tempC))
-          ? Number(bq.tempC)
-          : DEFAULT_BIO_QUALITY.tempC,
-        bodIn: Number.isFinite(Number(bq.bodIn))
-          ? Number(bq.bodIn)
-          : DEFAULT_BIO_QUALITY.bodIn,
-        bodOut: Number.isFinite(Number(bq.bodOut))
-          ? Number(bq.bodOut)
-          : DEFAULT_BIO_QUALITY.bodOut,
-        nh4In: Number.isFinite(Number(bq.nh4In))
-          ? Number(bq.nh4In)
-          : DEFAULT_BIO_QUALITY.nh4In,
-        nh4Out: Number.isFinite(Number(bq.nh4Out))
-          ? Number(bq.nh4Out)
-          : DEFAULT_BIO_QUALITY.nh4Out,
-        hasAnoxic:
-          typeof bq.hasAnoxic === 'boolean'
-            ? bq.hasAnoxic
-            : DEFAULT_BIO_QUALITY.hasAnoxic,
-        no3DenitrifiedMgL: Number.isFinite(Number(bq.no3DenitrifiedMgL))
-          ? Number(bq.no3DenitrifiedMgL)
-          : DEFAULT_BIO_QUALITY.no3DenitrifiedMgL,
-      },
-      wastewaterPollutants: {
-        bod5: Number.isFinite(Number(wp.bod5))
-          ? Math.max(0, Number(wp.bod5))
-          : DEFAULT_WASTEWATER_POLLUTANTS.bod5,
-        cod: Number.isFinite(Number(wp.cod))
-          ? Math.max(0, Number(wp.cod))
-          : DEFAULT_WASTEWATER_POLLUTANTS.cod,
-        ss: Number.isFinite(Number(wp.ss))
-          ? Math.max(0, Number(wp.ss))
-          : DEFAULT_WASTEWATER_POLLUTANTS.ss,
-        tn: Number.isFinite(Number(wp.tn))
-          ? Math.max(0, Number(wp.tn))
-          : DEFAULT_WASTEWATER_POLLUTANTS.tn,
-        tp: Number.isFinite(Number(wp.tp))
-          ? Math.max(0, Number(wp.tp))
-          : DEFAULT_WASTEWATER_POLLUTANTS.tp,
-      },
-    };
+    return normalizeDesignData(parsed, fallback);
   } catch {
     return fallback;
   }
 }
 
 export function AppProvider({ children }) {
-  const [initial] = useState(loadInitialState);
   const [initialProjects] = useState(loadInitialProjects);
   const [projectList, setProjectList] = useState(initialProjects.projectList);
   const [currentProjectId, setCurrentProjectId] = useState(
     initialProjects.activeProjectId
   );
 
-  const [globalQ, setGlobalQState] = useState(initial.globalQ);
-  const [peakingFactor, setPeakingFactorState] = useState(
-    initial.peakingFactor
-  );
-  const [bioQuality, setBioQuality] = useState(initial.bioQuality);
-  const [wastewaterPollutants, setWastewaterPollutants] = useState(
-    initial.wastewaterPollutants
-  );
+  const [designState, setDesignState] = useState(() => ({
+    projectId: initialProjects.activeProjectId,
+    data: loadProjectDesignData(initialProjects.activeProjectId),
+  }));
+  const [projectDataRevision, setProjectDataRevision] = useState(0);
   const [bioFocusSignal, setBioFocusSignal] = useState(0);
   const [printOptions, setPrintOptionsState] = useState(loadInitialPrintOptions);
   const [printModalState, setPrintModalState] = useState({
@@ -270,6 +344,20 @@ export function AppProvider({ children }) {
   });
   const [availableUnitProcesses, setAvailableUnitProcesses] = useState([]);
   const [selectedUnitProcesses, setSelectedUnitProcesses] = useState([]);
+  const [theme, setThemeState] = useState(loadInitialTheme);
+
+  useEffect(() => {
+    applyThemeToDocument(theme);
+    safeSetItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const setTheme = useCallback((nextTheme) => {
+    setThemeState(nextTheme === 'light' ? 'light' : 'dark');
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => (prev === 'light' ? 'dark' : 'light'));
+  }, []);
 
   const currentProject = useMemo(
     () =>
@@ -279,21 +367,26 @@ export function AppProvider({ children }) {
     [projectList, currentProjectId]
   );
 
+  const activeProjectId = currentProject.id;
+
+  const activeDesignData = useMemo(
+    () =>
+      designState.projectId === activeProjectId
+        ? designState.data
+        : loadProjectDesignData(activeProjectId),
+    [designState, activeProjectId]
+  );
+
+  const { globalQ, peakingFactor, bioQuality, wastewaterPollutants } =
+    activeDesignData;
+
   useEffect(() => {
-    try {
-      window.localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectList));
-    } catch {
-      // Ignore storage quota errors
-    }
+    safeSetItem(PROJECTS_STORAGE_KEY, JSON.stringify(projectList));
   }, [projectList]);
 
   useEffect(() => {
     if (!currentProject?.id) return;
-    try {
-      window.localStorage.setItem(ACTIVE_PROJECT_STORAGE_KEY, currentProject.id);
-    } catch {
-      // Ignore storage quota errors
-    }
+    safeSetItem(ACTIVE_PROJECT_STORAGE_KEY, currentProject.id);
   }, [currentProject?.id]);
 
   const selectProject = useCallback(
@@ -383,8 +476,34 @@ export function AppProvider({ children }) {
       }
 
       try {
-        window.localStorage.removeItem(`omniEco_BOM_${projectId}`);
-        window.localStorage.removeItem(`omniEco_Logs_${projectId}`);
+        const exactKeys = new Set([
+          `omniEco_BOM_${projectId}`,
+          `omniEco_Logs_${projectId}`,
+          `omniEco_Design_${projectId}`,
+          `omniEco_GSheetUrl_${projectId}`,
+        ]);
+        const isDefaultProject = projectId === DEFAULT_PROJECT_ID;
+        if (isDefaultProject) {
+          exactKeys.add(STORAGE_KEY);
+          exactKeys.add('omnieco_project_procurement');
+          exactKeys.add('dvn_operation_logs');
+          exactKeys.add('dvn_gsheet_url');
+        }
+        const eqSelPrefix = `omniEco_EqSel_${projectId}_`;
+        const calcPrefix = `omniEco_Calc_${projectId}_`;
+        Object.keys(window.localStorage).forEach((key) => {
+          if (
+            exactKeys.has(key) ||
+            key.startsWith(eqSelPrefix) ||
+            key.startsWith(calcPrefix) ||
+            (isDefaultProject && key.startsWith('omnieco_equipments_'))
+          ) {
+            window.localStorage.removeItem(key);
+          }
+        });
+        if (isDefaultProject) {
+          markLegacyEqMigrated();
+        }
       } catch {
         // Ignore storage errors
       }
@@ -394,46 +513,92 @@ export function AppProvider({ children }) {
     [projectList, currentProject?.id]
   );
 
-  // Tự động lưu Global State vào localStorage mỗi khi thay đổi
+  // Tự động nạp lại thông số thiết kế của dự án mới khi đổi currentProjectId
   useEffect(() => {
-    try {
-      const payload = {
-        globalQ,
-        peakingFactor,
-        bioQuality,
-        wastewaterPollutants,
-        updatedAt: new Date().toISOString(),
-      };
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      // Ignore storage quota errors
-    }
-  }, [globalQ, peakingFactor, bioQuality, wastewaterPollutants]);
+    setDesignState((prev) =>
+      prev.projectId === activeProjectId
+        ? prev
+        : {
+            projectId: activeProjectId,
+            data: loadProjectDesignData(activeProjectId),
+          }
+    );
+  }, [activeProjectId]);
 
-  const setGlobalQ = useCallback((nextValue) => {
-    const parsed = Number(nextValue);
-    if (Number.isNaN(parsed) || parsed < 0) {
-      setGlobalQState(0);
-      return;
-    }
-    setGlobalQState(parsed);
-  }, []);
+  // Chỉ ghi localStorage khi designState.projectId khớp activeProjectId (chống ghi đè chéo dự án)
+  useEffect(() => {
+    if (designState.projectId !== activeProjectId) return;
+    const payload = {
+      ...designState.data,
+      updatedAt: new Date().toISOString(),
+    };
+    safeSetItem(getDesignStorageKey(activeProjectId), JSON.stringify(payload));
+  }, [designState, activeProjectId]);
 
-  const setPeakingFactor = useCallback((nextFactor) => {
-    const parsed = Number(nextFactor);
-    if (Number.isNaN(parsed) || parsed < 1) {
-      setPeakingFactorState(1);
-      return;
-    }
-    setPeakingFactorState(Math.min(parsed, 5));
-  }, []);
+  const updateActiveDesignData = useCallback(
+    (updater) => {
+      setDesignState((prev) => {
+        const baseData =
+          prev.projectId === activeProjectId
+            ? prev.data
+            : loadProjectDesignData(activeProjectId);
+        const nextData =
+          typeof updater === 'function' ? updater(baseData) : updater;
+        return {
+          projectId: activeProjectId,
+          data: nextData,
+        };
+      });
+    },
+    [activeProjectId]
+  );
+
+  const setGlobalQ = useCallback(
+    (nextValue) => {
+      const parsed = Number(nextValue);
+      const sanitized = Number.isNaN(parsed) || parsed < 0 ? 0 : parsed;
+      updateActiveDesignData((prev) => ({ ...prev, globalQ: sanitized }));
+    },
+    [updateActiveDesignData]
+  );
+
+  const setPeakingFactor = useCallback(
+    (nextFactor) => {
+      const parsed = Number(nextFactor);
+      const sanitized =
+        Number.isNaN(parsed) || parsed < 1 ? 1 : Math.min(parsed, 5);
+      updateActiveDesignData((prev) => ({ ...prev, peakingFactor: sanitized }));
+    },
+    [updateActiveDesignData]
+  );
+
+  const setBioQuality = useCallback(
+    (updater) => {
+      updateActiveDesignData((prev) => ({
+        ...prev,
+        bioQuality:
+          typeof updater === 'function' ? updater(prev.bioQuality) : updater,
+      }));
+    },
+    [updateActiveDesignData]
+  );
+
+  const setWastewaterPollutants = useCallback(
+    (updater) => {
+      updateActiveDesignData((prev) => ({
+        ...prev,
+        wastewaterPollutants:
+          typeof updater === 'function'
+            ? updater(prev.wastewaterPollutants)
+            : updater,
+      }));
+    },
+    [updateActiveDesignData]
+  );
 
   const resetDefaults = useCallback(() => {
-    setGlobalQState(1000);
-    setPeakingFactorState(1.5);
-    setBioQuality(DEFAULT_BIO_QUALITY);
-    setWastewaterPollutants(DEFAULT_WASTEWATER_POLLUTANTS);
-  }, []);
+    updateActiveDesignData(() => createDefaultDesignData());
+  }, [updateActiveDesignData]);
 
   const triggerBiologyFocus = useCallback(() => {
     setBioFocusSignal((n) => n + 1);
@@ -441,14 +606,7 @@ export function AppProvider({ children }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    try {
-      window.localStorage.setItem(
-        PRINT_OPTIONS_STORAGE_KEY,
-        JSON.stringify(printOptions)
-      );
-    } catch {
-      // Ignore storage quota errors
-    }
+    safeSetItem(PRINT_OPTIONS_STORAGE_KEY, JSON.stringify(printOptions));
   }, [printOptions]);
 
   const setPrintOptions = useCallback((updater) => {
@@ -456,6 +614,12 @@ export function AppProvider({ children }) {
       typeof updater === 'function' ? updater(prev) : { ...prev, ...updater }
     );
   }, []);
+
+  const availableUnitProcessesRef = useRef(availableUnitProcesses);
+
+  useEffect(() => {
+    availableUnitProcessesRef.current = availableUnitProcesses;
+  }, [availableUnitProcesses]);
 
   const registerPrintUnitProcesses = useCallback((processes) => {
     const normalized = Array.isArray(processes)
@@ -465,6 +629,7 @@ export function AppProvider({ children }) {
           )
         )
       : [];
+    availableUnitProcessesRef.current = normalized;
     setAvailableUnitProcesses((prev) => {
       if (
         prev.length === normalized.length &&
@@ -477,16 +642,13 @@ export function AppProvider({ children }) {
     setSelectedUnitProcesses(normalized);
   }, []);
 
-  const openPrintModal = useCallback(
-    (documentTitle = '') => {
-      setSelectedUnitProcesses(availableUnitProcesses);
-      setPrintModalState({
-        open: true,
-        documentTitle: typeof documentTitle === 'string' ? documentTitle : '',
-      });
-    },
-    [availableUnitProcesses]
-  );
+  const openPrintModal = useCallback((documentTitle = '') => {
+    setSelectedUnitProcesses(availableUnitProcessesRef.current);
+    setPrintModalState({
+      open: true,
+      documentTitle: typeof documentTitle === 'string' ? documentTitle : '',
+    });
+  }, []);
 
   const closePrintModal = useCallback(() => {
     setPrintModalState((prev) => ({ ...prev, open: false }));
@@ -503,35 +665,300 @@ export function AppProvider({ children }) {
   }, []);
 
   const exportProjectJson = useCallback(() => {
+    const projectId = activeProjectId || DEFAULT_PROJECT_ID;
+    const calcPrefix = `omniEco_Calc_${projectId}_`;
+    const eqSelPrefix = `omniEco_EqSel_${projectId}_`;
+    const calculations = {};
+    const equipmentSelections = {};
+
+    if (typeof window !== 'undefined') {
+      try {
+        Object.keys(window.localStorage)
+          .sort()
+          .forEach((key) => {
+            if (key.startsWith(calcPrefix)) {
+              const suffix = key.slice(calcPrefix.length);
+              if (!suffix) return;
+              const raw = window.localStorage.getItem(key);
+              if (raw === null) return;
+              try {
+                calculations[suffix] = JSON.parse(raw);
+              } catch {
+                // Skip corrupt calculation entry
+              }
+            } else if (key.startsWith(eqSelPrefix)) {
+              const suffix = key.slice(eqSelPrefix.length);
+              if (!suffix) return;
+              const raw = window.localStorage.getItem(key);
+              if (raw === null) return;
+              try {
+                equipmentSelections[suffix] = JSON.parse(raw);
+              } catch {
+                // Skip corrupt equipment selection entry
+              }
+            }
+          });
+      } catch {
+        // Ignore storage read errors
+      }
+    }
+
+    const storedBom = safeReadJsonKey(`omniEco_BOM_${projectId}`, []);
+    const bom = Array.isArray(storedBom) ? storedBom : [];
+
+    const storedLogs = safeReadJsonKey(`omniEco_Logs_${projectId}`, []);
+    const logs = Array.isArray(storedLogs) ? storedLogs : [];
+
+    let gsheetUrl = '';
+    if (typeof window !== 'undefined') {
+      try {
+        const savedUrl = window.localStorage.getItem(
+          `omniEco_GSheetUrl_${projectId}`
+        );
+        if (savedUrl !== null) {
+          gsheetUrl = savedUrl;
+        } else if (projectId === DEFAULT_PROJECT_ID) {
+          gsheetUrl = window.localStorage.getItem('dvn_gsheet_url') || '';
+        }
+      } catch {
+        gsheetUrl = '';
+      }
+    }
+
+    const projectInfo = {
+      name: currentProject?.name || 'Dự án mặc định',
+      contractor:
+        currentProject?.contractor !== undefined &&
+        currentProject?.contractor !== null
+          ? String(currentProject.contractor)
+          : DEFAULT_CONTRACTOR_NAME,
+      investor: String(currentProject?.investor || ''),
+      location: String(currentProject?.location || ''),
+      capacity: String(currentProject?.capacity || ''),
+      notes: String(currentProject?.notes || ''),
+    };
+
+    const design = {
+      globalQ,
+      peakingFactor,
+      bioQuality,
+      wastewaterPollutants,
+    };
+
+    const now = new Date();
     const payload = {
       app: 'OmniEco',
-      version: '1.0',
-      exportedAt: new Date().toISOString(),
-      state: {
-        globalQ,
-        peakingFactor,
-        bioQuality,
-        wastewaterPollutants,
-      },
+      schemaVersion: 2,
+      exportedAt: now.toISOString(),
+      projectInfo,
+      design,
+      calculations,
+      equipmentSelections,
+      bom,
+      logs,
+      gsheetUrl,
     };
+
     const jsonString = JSON.stringify(payload, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    const dateStamp = new Date().toISOString().slice(0, 10);
+    const slugProjectName = slugifyProjectName(projectInfo.name);
+    const dateStamp = getCompactDateStamp(now);
     link.href = url;
-    link.download = `omnieco-thiet-ke-${dateStamp}.json`;
+    link.download = `omniEco_${slugProjectName}_${dateStamp}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-  }, [globalQ, peakingFactor, bioQuality, wastewaterPollutants]);
+  }, [
+    activeProjectId,
+    currentProject,
+    globalQ,
+    peakingFactor,
+    bioQuality,
+    wastewaterPollutants,
+  ]);
 
   const importProjectJson = useCallback(
     (rawText) => {
       try {
         const parsed = JSON.parse(rawText);
-        const source = parsed?.state ? parsed.state : parsed;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return {
+            ok: false,
+            message: 'File JSON không hợp lệ. Vui lòng kiểm tra lại định dạng file.',
+          };
+        }
+
+        const projectId = activeProjectId || DEFAULT_PROJECT_ID;
+        const isSchemaV2 = Number(parsed.schemaVersion) === 2;
+
+        if (isSchemaV2) {
+          const designSource =
+            parsed.design && typeof parsed.design === 'object'
+              ? parsed.design
+              : null;
+
+          if (designSource && typeof designSource.globalQ !== 'undefined') {
+            const parsedQ = Number(designSource.globalQ);
+            if (!Number.isFinite(parsedQ) || parsedQ < 0) {
+              return {
+                ok: false,
+                message: 'Giá trị globalQ trong file JSON không hợp lệ.',
+              };
+            }
+          }
+
+          const nextDesign = designSource
+            ? normalizeDesignData(designSource, createDefaultDesignData())
+            : createDefaultDesignData();
+
+          const nextCalculations =
+            parsed.calculations &&
+            typeof parsed.calculations === 'object' &&
+            !Array.isArray(parsed.calculations)
+              ? parsed.calculations
+              : {};
+
+          const nextEquipmentSelections =
+            parsed.equipmentSelections &&
+            typeof parsed.equipmentSelections === 'object' &&
+            !Array.isArray(parsed.equipmentSelections)
+              ? parsed.equipmentSelections
+              : {};
+
+          const nextBom = Array.isArray(parsed.bom) ? parsed.bom : [];
+          const nextLogs = Array.isArray(parsed.logs) ? parsed.logs : [];
+          const nextGsheetUrl =
+            typeof parsed.gsheetUrl === 'string' ? parsed.gsheetUrl.trim() : '';
+
+          if (typeof window !== 'undefined') {
+            const calcPrefix = `omniEco_Calc_${projectId}_`;
+            const eqSelPrefix = `omniEco_EqSel_${projectId}_`;
+            const isDefaultProject = projectId === DEFAULT_PROJECT_ID;
+
+            // 1. Dọn dẹp toàn bộ key tính toán & thiết bị đã gán cũ của dự án hiện tại
+            // (Tuyệt đối không đụng tới kho thiết bị dùng chung omnieco_equipments)
+            Object.keys(window.localStorage).forEach((key) => {
+              if (
+                key.startsWith(calcPrefix) ||
+                key.startsWith(eqSelPrefix) ||
+                (isDefaultProject && key.startsWith('omnieco_equipments_'))
+              ) {
+                window.localStorage.removeItem(key);
+              }
+            });
+            if (isDefaultProject) {
+              markLegacyEqMigrated();
+            }
+
+            // 2. Ghi thông số tính toán chi tiết & overrides (calculations)
+            Object.entries(nextCalculations).forEach(([suffix, val]) => {
+              const cleanSuffix = String(suffix || '').trim();
+              if (!cleanSuffix) return;
+              safeSetItem(
+                `${calcPrefix}${cleanSuffix}`,
+                JSON.stringify(val)
+              );
+            });
+
+            // 3. Ghi danh sách thiết bị gán vào từng công đoạn (equipmentSelections)
+            Object.entries(nextEquipmentSelections).forEach(([suffix, val]) => {
+              const cleanSuffix = String(suffix || '').trim();
+              if (!cleanSuffix || !Array.isArray(val)) return;
+              safeSetItem(
+                `${eqSelPrefix}${cleanSuffix}`,
+                JSON.stringify(val)
+              );
+            });
+
+            // 4. Ghi BOM, Nhật ký vận hành, Google Sheet URL và thông số thiết kế
+            safeSetItem(
+              `omniEco_BOM_${projectId}`,
+              JSON.stringify(nextBom)
+            );
+            safeSetItem(
+              `omniEco_Logs_${projectId}`,
+              JSON.stringify(nextLogs)
+            );
+            safeSetItem(
+              `omniEco_GSheetUrl_${projectId}`,
+              nextGsheetUrl
+            );
+            safeSetItem(
+              getDesignStorageKey(projectId),
+              JSON.stringify({
+                ...nextDesign,
+                updatedAt: new Date().toISOString(),
+              })
+            );
+          }
+
+          // 5. Cập nhật thông tin hành chính dự án (projectInfo)
+          let resolvedName = currentProject?.name || 'Dự án mặc định';
+          if (
+            parsed.projectInfo &&
+            typeof parsed.projectInfo === 'object' &&
+            !Array.isArray(parsed.projectInfo)
+          ) {
+            const info = parsed.projectInfo;
+            const trimmedName = String(info.name || '').trim();
+            if (trimmedName) {
+              resolvedName = trimmedName;
+            }
+            setProjectList((prev) =>
+              prev.map((project) => {
+                if (project.id !== projectId) return project;
+                return {
+                  ...project,
+                  name: trimmedName || project.name,
+                  contractor:
+                    info.contractor !== undefined && info.contractor !== null
+                      ? String(info.contractor).trim()
+                      : project.contractor ?? DEFAULT_CONTRACTOR_NAME,
+                  investor:
+                    info.investor !== undefined
+                      ? String(info.investor || '').trim()
+                      : project.investor,
+                  location:
+                    info.location !== undefined
+                      ? String(info.location || '').trim()
+                      : project.location,
+                  capacity:
+                    info.capacity !== undefined
+                      ? String(info.capacity || '').trim()
+                      : project.capacity,
+                  notes:
+                    info.notes !== undefined
+                      ? String(info.notes || '').trim()
+                      : project.notes,
+                };
+              })
+            );
+          }
+
+          // 6. Đồng bộ state thiết kế & kích hoạt làm mới tức thì toàn bộ trang con
+          setDesignState({
+            projectId,
+            data: nextDesign,
+          });
+          setProjectDataRevision((n) => n + 1);
+
+          const calcCount = Object.keys(nextCalculations).length;
+          return {
+            ok: true,
+            message: `Đã nhập toàn bộ dự án "${resolvedName}" (Q = ${nextDesign.globalQ.toLocaleString('vi-VN')} m³/ngày, ${calcCount} nhóm tính toán, ${nextBom.length} mục BOM, ${nextLogs.length} nhật ký).`,
+          };
+        }
+
+        // Tương thích ngược: File JSON cũ (schema v1 hoặc object 4 trường thiết kế)
+        const source = parsed?.state
+          ? parsed.state
+          : parsed?.design
+          ? parsed.design
+          : parsed;
+
         if (
           !source ||
           typeof source !== 'object' ||
@@ -543,6 +970,7 @@ export function AppProvider({ children }) {
               'File JSON không đúng định dạng thiết kế OmniEco (thiếu globalQ).',
           };
         }
+
         const nextQ = Number(source.globalQ);
         if (!Number.isFinite(nextQ) || nextQ < 0) {
           return {
@@ -550,63 +978,13 @@ export function AppProvider({ children }) {
             message: 'Giá trị globalQ trong file JSON không hợp lệ.',
           };
         }
-        setGlobalQ(nextQ);
 
-        if (typeof source.peakingFactor !== 'undefined') {
-          setPeakingFactor(source.peakingFactor);
-        }
-        if (source.bioQuality && typeof source.bioQuality === 'object') {
-          const bq = source.bioQuality;
-          setBioQuality((prev) => ({
-            tempC: Number.isFinite(Number(bq.tempC))
-              ? Number(bq.tempC)
-              : prev.tempC,
-            bodIn: Number.isFinite(Number(bq.bodIn))
-              ? Number(bq.bodIn)
-              : prev.bodIn,
-            bodOut: Number.isFinite(Number(bq.bodOut))
-              ? Number(bq.bodOut)
-              : prev.bodOut,
-            nh4In: Number.isFinite(Number(bq.nh4In))
-              ? Number(bq.nh4In)
-              : prev.nh4In,
-            nh4Out: Number.isFinite(Number(bq.nh4Out))
-              ? Number(bq.nh4Out)
-              : prev.nh4Out,
-            hasAnoxic:
-              typeof bq.hasAnoxic === 'boolean' ? bq.hasAnoxic : prev.hasAnoxic,
-            no3DenitrifiedMgL: Number.isFinite(Number(bq.no3DenitrifiedMgL))
-              ? Number(bq.no3DenitrifiedMgL)
-              : prev.no3DenitrifiedMgL,
-          }));
-        }
-        if (
-          source.wastewaterPollutants &&
-          typeof source.wastewaterPollutants === 'object'
-        ) {
-          const wp = source.wastewaterPollutants;
-          setWastewaterPollutants((prev) => ({
-            bod5: Number.isFinite(Number(wp.bod5))
-              ? Math.max(0, Number(wp.bod5))
-              : prev.bod5,
-            cod: Number.isFinite(Number(wp.cod))
-              ? Math.max(0, Number(wp.cod))
-              : prev.cod,
-            ss: Number.isFinite(Number(wp.ss))
-              ? Math.max(0, Number(wp.ss))
-              : prev.ss,
-            tn: Number.isFinite(Number(wp.tn))
-              ? Math.max(0, Number(wp.tn))
-              : prev.tn,
-            tp: Number.isFinite(Number(wp.tp))
-              ? Math.max(0, Number(wp.tp))
-              : prev.tp,
-          }));
-        }
+        updateActiveDesignData((prev) => normalizeDesignData(source, prev));
+        setProjectDataRevision((n) => n + 1);
 
         return {
           ok: true,
-          message: `Đã nhập thành công hồ sơ JSON (Q = ${nextQ.toLocaleString('vi-VN')} m³/ngày).`,
+          message: `Đã nhập thành công hồ sơ thiết kế JSON (Q = ${nextQ.toLocaleString('vi-VN')} m³/ngày).`,
         };
       } catch {
         return {
@@ -615,7 +993,7 @@ export function AppProvider({ children }) {
         };
       }
     },
-    [setGlobalQ, setPeakingFactor]
+    [activeProjectId, currentProject?.name, updateActiveDesignData]
   );
 
   const hydraulics = useMemo(() => {
@@ -689,6 +1067,8 @@ export function AppProvider({ children }) {
       confirmAndPrint,
       registerPrintUnitProcesses,
       setSelectedUnitProcesses,
+      setTheme,
+      toggleTheme,
     }),
     [
       selectProject,
@@ -697,6 +1077,8 @@ export function AppProvider({ children }) {
       deleteProject,
       setGlobalQ,
       setPeakingFactor,
+      setBioQuality,
+      setWastewaterPollutants,
       triggerBiologyFocus,
       resetDefaults,
       importProjectJson,
@@ -705,13 +1087,17 @@ export function AppProvider({ children }) {
       closePrintModal,
       confirmAndPrint,
       registerPrintUnitProcesses,
+      setTheme,
+      toggleTheme,
     ]
   );
 
   const value = useMemo(
     () => ({
       projectList,
+      currentProjectId: activeProjectId,
       currentProject,
+      projectDataRevision,
       selectProject,
       createProject,
       updateProject,
@@ -741,10 +1127,15 @@ export function AppProvider({ children }) {
       confirmAndPrint,
       registerPrintUnitProcesses,
       setSelectedUnitProcesses,
+      theme,
+      setTheme,
+      toggleTheme,
     }),
     [
       projectList,
+      activeProjectId,
       currentProject,
+      projectDataRevision,
       selectProject,
       createProject,
       updateProject,
@@ -755,7 +1146,9 @@ export function AppProvider({ children }) {
       setPeakingFactor,
       hydraulics,
       bioQuality,
+      setBioQuality,
       wastewaterPollutants,
+      setWastewaterPollutants,
       biologyNod,
       bioFocusSignal,
       triggerBiologyFocus,
@@ -771,6 +1164,9 @@ export function AppProvider({ children }) {
       closePrintModal,
       confirmAndPrint,
       registerPrintUnitProcesses,
+      theme,
+      setTheme,
+      toggleTheme,
     ]
   );
 

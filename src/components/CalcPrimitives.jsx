@@ -6,16 +6,6 @@ import {
   Table,
 } from 'lucide-react';
 
-export function safeDiv(numerator, denominator, fallback = 0) {
-  const num = Number(numerator);
-  const den = Number(denominator);
-  if (!Number.isFinite(num) || !Number.isFinite(den) || den === 0) {
-    return fallback;
-  }
-  const res = num / den;
-  return Number.isFinite(res) ? res : fallback;
-}
-
 export function roundUpToStep(val, step = 0.1) {
   if (!Number.isFinite(val) || val <= 0) return step;
   return Number((Math.ceil(val / step) * step).toFixed(2));

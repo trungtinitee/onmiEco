@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const SOLID_EQUIPMENT_LABELS = {
   landfill: 'Ô chôn lấp hợp vệ sinh',
@@ -41,15 +42,20 @@ const calcFrustumVolume = (l1, w1, l2, w2, h) => {
 // Nội suy chiều rộng đáy W_bottom cho ô chóp cụt mở rộng lên trên theo mái dốc taluy m
 const solveLandfillBottomWidth = (targetVol, h, ratioLW, slopeM) => {
   if (targetVol <= 0 || h <= 0) return 1;
+  const volAt = (w) => {
+    const lBot = w * ratioLW;
+    const wTop = w + 2 * slopeM * h;
+    const lTop = lBot + 2 * slopeM * h;
+    return calcFrustumVolume(lBot, w, lTop, wTop, h);
+  };
   let low = 1;
   let high = 500;
-  for (let i = 0; i < 40; i++) {
+  while (volAt(high) < targetVol && high < 1e6) {
+    high *= 2;
+  }
+  for (let i = 0; i < 60; i++) {
     const mid = (low + high) / 2;
-    const lBot = mid * ratioLW;
-    const wTop = mid + 2 * slopeM * h;
-    const lTop = lBot + 2 * slopeM * h;
-    const v = calcFrustumVolume(lBot, mid, lTop, wTop, h);
-    if (v < targetVol) low = mid;
+    if (volAt(mid) < targetVol) low = mid;
     else high = mid;
   }
   return (low + high) / 2;
@@ -59,15 +65,20 @@ const solveLandfillBottomWidth = (targetVol, h, ratioLW, slopeM) => {
 const solveCompostBottomWidth = (targetVol, h, ratioLW, slopeM) => {
   if (targetVol <= 0 || h <= 0) return 1;
   const minW = 2 * slopeM * h + 0.5;
-  let low = minW;
-  let high = 200;
-  for (let i = 0; i < 40; i++) {
-    const mid = (low + high) / 2;
-    const lBot = mid * ratioLW;
-    const wTop = Math.max(0.4, mid - 2 * slopeM * h);
+  const volAt = (w) => {
+    const lBot = w * ratioLW;
+    const wTop = Math.max(0.4, w - 2 * slopeM * h);
     const lTop = Math.max(0.8, lBot - 2 * slopeM * h);
-    const v = calcFrustumVolume(lBot, mid, lTop, wTop, h);
-    if (v < targetVol) low = mid;
+    return calcFrustumVolume(lBot, w, lTop, wTop, h);
+  };
+  let low = minW;
+  let high = Math.max(200, minW * 2);
+  while (volAt(high) < targetVol && high < 1e6) {
+    high *= 2;
+  }
+  for (let i = 0; i < 60; i++) {
+    const mid = (low + high) / 2;
+    if (volAt(mid) < targetVol) low = mid;
     else high = mid;
   }
   return (low + high) / 2;
@@ -76,13 +87,13 @@ const solveCompostBottomWidth = (targetVol, h, ratioLW, slopeM) => {
 export default function SolidWasteCalc() {
   const { globalQ } = useAppContext();
   const [activeTab, setActiveTab] = useState('landfill');
-  const [wasteTonDay, setWasteTonDay] = useState(5);
+  const [wasteTonDay, setWasteTonDay] = useProjectState('solid_wasteTonDay', 5);
 
   const qWasteTon = Math.max(0, Number(wasteTonDay) || 0);
   const qWasteKg = qWasteTon * 1000;
 
   // --- TAB 1: Ô CHÔN LẤP ---
-  const [landfill, setLandfill] = useState({
+  const [landfill, setLandfill] = useProjectState('solid_landfill', {
     shape: 'Hình chóp cụt', // Hình chóp cụt | Chữ nhật
     operatingYears: 5,
     compactedDensityKgM3: 750,
@@ -91,10 +102,10 @@ export default function SolidWasteCalc() {
     ratioLW: 1.5,
     slopeM: 1.5, // mái dốc 1:1.5
   });
-  const [landfillOv, setLandfillOv] = useState(null);
+  const [landfillOv, setLandfillOv] = useProjectState('solid_landfillOv', null);
 
   // --- TAB 2: Ủ COMPOST ---
-  const [compost, setCompost] = useState({
+  const [compost, setCompost] = useProjectState('solid_compost', {
     shape: 'Hình chóp cụt', // Hình chóp cụt | Chữ nhật
     organicPct: 60,
     densityKgM3: 550,
@@ -104,10 +115,10 @@ export default function SolidWasteCalc() {
     ratioLW: 4.0,
     slopeM: 0.6,
   });
-  const [compostOv, setCompostOv] = useState(null);
+  const [compostOv, setCompostOv] = useProjectState('solid_compostOv', null);
 
   // --- TAB 3: LÒ ĐỐT RÁC Y TẾ / NGUY HẠI ---
-  const [incinerator, setIncinerator] = useState({
+  const [incinerator, setIncinerator] = useProjectState('solid_incinerator', {
     burnHoursDay: 10,
     primaryShape: 'Tròn', // Tròn | Chữ nhật
     secondaryShape: 'Tròn', // Tròn | Chữ nhật
@@ -117,7 +128,7 @@ export default function SolidWasteCalc() {
     flueGasNm3Kg: 10.0, // lưu lượng khói chuẩn Nm3 / kg rác
     targetRetentionSec: 2.2, // yêu cầu bắt buộc >= 2.0s
   });
-  const [incOv, setIncOv] = useState(null);
+  const [incOv, setIncOv] = useProjectState('solid_incOv', null);
 
   // === CALCULATIONS: 1. Ô CHÔN LẤP ===
   const lfDays = Math.max(1, landfill.operatingYears * 365);

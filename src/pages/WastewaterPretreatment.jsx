@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const PRETREAT_EQUIPMENT_LABELS = {
   screen: 'Song chắn rác',
@@ -138,35 +139,44 @@ export default function WastewaterPretreatment() {
   const [activeTab, setActiveTab] = useState('screen');
 
   // --- Tab 1: Song chắn rác state ---
-  const [screenParams, setScreenParams] = useState({
-    vKhe: 0.8,
-    bMm: 16,
-    sMm: 8,
-    angleDeg: 60,
-    hWater: 0.5,
-    beta: 2.42,
-    clogFactor: 2.5,
-  });
-  const [screenOverride, setScreenOverride] = useState({
-    widthB: 0.6,
-    depthH: 0.5,
-    channelL: 3.0,
-  });
+  const [screenParams, setScreenParams] = useProjectState(
+    'pretreat_screenParams',
+    {
+      vKhe: 0.8,
+      bMm: 16,
+      sMm: 8,
+      angleDeg: 60,
+      hWater: 0.5,
+      beta: 2.42,
+      clogFactor: 2.5,
+    }
+  );
+  const [screenOverride, setScreenOverride] = useProjectState(
+    'pretreat_screenOverride',
+    {
+      widthB: 0.6,
+      depthH: 0.5,
+      channelL: 3.0,
+    }
+  );
 
   // --- Volumetric Tabs State (grit, grease, equalization) ---
-  const [gritParams, setGritParams] = useState({
+  const [gritParams, setGritParams] = useProjectState('pretreat_gritParams', {
     retentionSec: 60,
     depthH: 1.5,
     ratioLW: 3.0,
     shape: 'Chữ nhật',
   });
-  const [greaseParams, setGreaseParams] = useState({
-    retentionMin: 20,
-    depthH: 1.8,
-    ratioLW: 2.0,
-    shape: 'Chữ nhật',
-  });
-  const [eqParams, setEqParams] = useState({
+  const [greaseParams, setGreaseParams] = useProjectState(
+    'pretreat_greaseParams',
+    {
+      retentionMin: 20,
+      depthH: 1.8,
+      ratioLW: 2.0,
+      shape: 'Chữ nhật',
+    }
+  );
+  const [eqParams, setEqParams] = useProjectState('pretreat_eqParams', {
     hrtHours: 6,
     depthH: 3.5,
     airRate: 0.6,
@@ -175,7 +185,7 @@ export default function WastewaterPretreatment() {
   });
 
   // Per-tab custom override values (null = auto-derived from theoretical rounded up)
-  const [overrides, setOverrides] = useState({
+  const [overrides, setOverrides] = useProjectState('pretreat_overrides', {
     grit: null,
     grease: null,
     equalization: null,

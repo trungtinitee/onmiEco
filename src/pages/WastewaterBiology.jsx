@@ -20,6 +20,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const BIO_TABS = [
   { id: 'uasb', label: 'UASB', icon: Flame },
@@ -256,7 +257,7 @@ export default function WastewaterBiology() {
   }, [bioFocusSignal]);
 
   // --- Tab-specific process & geometry state ---
-  const [uasb, setUasb] = useState({
+  const [uasb, setUasb] = useProjectState('bio_uasb', {
     codIn: 1800,
     codOut: 360,
     olr: 6.0,
@@ -265,7 +266,7 @@ export default function WastewaterBiology() {
     shape: 'Chữ nhật',
   });
 
-  const [anoxic, setAnoxic] = useState({
+  const [anoxic, setAnoxic] = useProjectState('bio_anoxic', {
     hrtHours: 2.5,
     no3In: 35,
     no3Out: 7,
@@ -276,7 +277,7 @@ export default function WastewaterBiology() {
     shape: 'Chữ nhật',
   });
 
-  const [aerotank, setAerotank] = useState({
+  const [aerotank, setAerotank] = useProjectState('bio_aerotank', {
     mlss: 3000,
     srtDesign: 12,
     depthH: 4.2,
@@ -284,7 +285,7 @@ export default function WastewaterBiology() {
     shape: 'Chữ nhật',
   });
 
-  const [sbr, setSbr] = useState({
+  const [sbr, setSbr] = useProjectState('bio_sbr', {
     numTanks: 2,
     cycleHours: 6.0,
     fillHours: 1.5,
@@ -299,7 +300,7 @@ export default function WastewaterBiology() {
     shape: 'Chữ nhật',
   });
 
-  const [mbbr, setMbbr] = useState({
+  const [mbbr, setMbbr] = useProjectState('bio_mbbr', {
     mediaFillPct: 40,
     mediaSsa: 500,
     salr: 10, // g BOD / m2.ngày
@@ -309,7 +310,7 @@ export default function WastewaterBiology() {
     shape: 'Chữ nhật',
   });
 
-  const [mbr, setMbr] = useState({
+  const [mbr, setMbr] = useProjectState('bio_mbr', {
     mlss: 9000,
     srtDesign: 20,
     fluxLmh: 18, // L / m2.h
@@ -319,7 +320,7 @@ export default function WastewaterBiology() {
   });
 
   // --- Tab 7: Bể lắng 2 (Lắng sinh học + Tuần hoàn bùn RAS) ---
-  const [clarifier, setClarifier] = useState({
+  const [clarifier, setClarifier] = useProjectState('bio_clarifier', {
     numTanks: 1,
     shape: 'Tròn',
     surfaceLoadTarget: 1.0, // m3/m2.h (max chuẩn 1.5)
@@ -330,10 +331,13 @@ export default function WastewaterBiology() {
     weirRings: 1,
     returnSludgeSsMgL: 8000, // mg/L (nồng độ bùn đáy tuần hoàn X_r)
   });
-  const [clarifierOverride, setClarifierOverride] = useState(null);
+  const [clarifierOverride, setClarifierOverride] = useProjectState(
+    'bio_clarifierOverride',
+    null
+  );
 
   // Per-tab construction override state
-  const [overrides, setOverrides] = useState({
+  const [overrides, setOverrides] = useProjectState('bio_overrides', {
     uasb: null,
     anoxic: null,
     aerotank: null,
@@ -1159,7 +1163,8 @@ export default function WastewaterBiology() {
                 isSbrCycleMatch ? 'text-emerald-400' : 'text-red-400'
               }`}
             >
-              Tổng pha: {sbrTotalPhase.toFixed(2)} / {sbr.cycleHours.toFixed(2)} giờ
+              Tổng pha: {Number(sbrTotalPhase || 0).toFixed(2)} /{' '}
+              {Number(sbr.cycleHours || 0).toFixed(2)} giờ
             </span>
           </div>
 
@@ -1278,10 +1283,10 @@ export default function WastewaterBiology() {
             summaryLabel="Tổng pha / Chu kỳ"
             message={
               isSbrCycleMatch
-                ? `Tổng thời gian 4 pha bằng ${sbrTotalPhase.toFixed(2)} giờ, khớp chính xác với thời gian 1 chu kỳ (${sbr.cycleHours.toFixed(2)} giờ).`
-                : `Tổng thời gian 4 pha đang là ${sbrTotalPhase.toFixed(2)} giờ, chênh lệch ${(sbrTotalPhase - sbr.cycleHours).toFixed(2)} giờ so với chu kỳ ${sbr.cycleHours.toFixed(2)} giờ. Vui lòng điều chỉnh lại!`
+                ? `Tổng thời gian 4 pha bằng ${Number(sbrTotalPhase || 0).toFixed(2)} giờ, khớp chính xác với thời gian 1 chu kỳ (${Number(sbr.cycleHours || 0).toFixed(2)} giờ).`
+                : `Tổng thời gian 4 pha đang là ${Number(sbrTotalPhase || 0).toFixed(2)} giờ, chênh lệch ${(Number(sbrTotalPhase || 0) - Number(sbr.cycleHours || 0)).toFixed(2)} giờ so với chu kỳ ${Number(sbr.cycleHours || 0).toFixed(2)} giờ. Vui lòng điều chỉnh lại!`
             }
-            summaryRight={`${sbrTotalPhase.toFixed(2)} / ${sbr.cycleHours.toFixed(2)} h`}
+            summaryRight={`${Number(sbrTotalPhase || 0).toFixed(2)} / ${Number(sbr.cycleHours || 0).toFixed(2)} h`}
           />
         </section>
       )}
@@ -2121,7 +2126,7 @@ export default function WastewaterBiology() {
               : ''
           }${
             activeTab === 'sbr' && !isSbrCycleMatch
-              ? ` Tổng giờ các pha SBR (${sbrTotalPhase.toFixed(2)}h) không khớp chu kỳ (${sbr.cycleHours.toFixed(2)}h).`
+              ? ` Tổng giờ các pha SBR (${Number(sbrTotalPhase || 0).toFixed(2)}h) không khớp chu kỳ (${Number(sbr.cycleHours || 0).toFixed(2)}h).`
               : ''
           }`}
           summaryRight={`${actual.volume.toFixed(2)} m³ · ${hrtActualHours.toFixed(2)} h`}

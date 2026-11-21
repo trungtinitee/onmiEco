@@ -19,7 +19,9 @@ import {
   loadEquipmentsFromStorage,
   matchesMultiKeywordSearch,
 } from './EquipmentDBManager';
-import { useAppContext } from '../context/AppContext';
+import { DEFAULT_PROJECT_ID, useAppContext } from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { isLegacyEqMigrated, safeSetItem } from '../utils/storage';
 
 function sanitizeIntInput(raw) {
   return String(raw || '').replace(/[^0-9]/g, '');
@@ -30,13 +32,29 @@ function parseNonNegativeInt(raw, fallback = 0) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-function loadAssignedFromStorage(storageKey) {
-  if (!storageKey || typeof window === 'undefined') return [];
+function loadAssignedFromStorage(scopedStorageKey, legacyStorageKey, projectId) {
+  if (!scopedStorageKey || typeof window === 'undefined') return [];
   try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const raw = window.localStorage.getItem(scopedStorageKey);
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    if (
+      projectId === DEFAULT_PROJECT_ID &&
+      legacyStorageKey &&
+      !isLegacyEqMigrated()
+    ) {
+      const legacyRaw = window.localStorage.getItem(legacyStorageKey);
+      if (legacyRaw !== null) {
+        const parsedLegacy = JSON.parse(legacyRaw);
+        if (Array.isArray(parsedLegacy)) {
+          safeSetItem(scopedStorageKey, JSON.stringify(parsedLegacy));
+          return parsedLegacy;
+        }
+      }
+    }
+    return [];
   } catch {
     return [];
   }
@@ -49,20 +67,49 @@ export default function EquipmentSelector({
   onChange,
   compact = false,
 }) {
-  const { printOptions } = useAppContext();
+  const { currentProjectId, currentProject, printOptions } = useAppContext();
+  const activeProjectId =
+    currentProjectId || currentProject?.id || DEFAULT_PROJECT_ID;
+  const scopedStorageKey = storageKey
+    ? `omniEco_EqSel_${activeProjectId}_${storageKey}`
+    : '';
   const isControlled = Array.isArray(value);
 
-  const [internalSelected, setInternalSelected] = useState(() =>
-    loadAssignedFromStorage(storageKey)
+  const [internalState, setInternalState] = useState(() => ({
+    key: scopedStorageKey,
+    items: loadAssignedFromStorage(
+      scopedStorageKey,
+      storageKey,
+      activeProjectId
+    ),
+  }));
+
+  const internalSelected = useMemo(
+    () =>
+      internalState.key === scopedStorageKey
+        ? internalState.items
+        : loadAssignedFromStorage(
+            scopedStorageKey,
+            storageKey,
+            activeProjectId
+          ),
+    [internalState, scopedStorageKey, storageKey, activeProjectId]
   );
 
   useEffect(() => {
     if (!isControlled) {
-      setInternalSelected(loadAssignedFromStorage(storageKey));
+      setInternalState({
+        key: scopedStorageKey,
+        items: loadAssignedFromStorage(
+          scopedStorageKey,
+          storageKey,
+          activeProjectId
+        ),
+      });
     }
     setIsModalOpen(false);
     setPickedEquipment(null);
-  }, [storageKey, isControlled]);
+  }, [scopedStorageKey, storageKey, activeProjectId, isControlled]);
 
   const assignedList = isControlled ? value : internalSelected;
 
@@ -117,6 +164,8 @@ export default function EquipmentSelector({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useBodyScrollLock(isModalOpen);
+
   // Đóng modal bằng phím Escape
   useEffect(() => {
     if (!isModalOpen) return undefined;
@@ -146,14 +195,10 @@ export default function EquipmentSelector({
   const commitList = useCallback(
     (nextList) => {
       if (!isControlled) {
-        setInternalSelected(nextList);
+        setInternalState({ key: scopedStorageKey, items: nextList });
       }
-      if (storageKey && typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem(storageKey, JSON.stringify(nextList));
-        } catch {
-          // Bỏ qua nếu bộ nhớ đầy
-        }
+      if (scopedStorageKey && typeof window !== 'undefined') {
+        safeSetItem(scopedStorageKey, JSON.stringify(nextList));
       }
       const nextTotalKw = nextList.reduce(
         (sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.power) || 0),
@@ -164,7 +209,7 @@ export default function EquipmentSelector({
         totalInstalledKw: nextTotalKw,
       });
     },
-    [isControlled, storageKey, onChange]
+    [isControlled, scopedStorageKey, onChange]
   );
 
   const openSelectorModal = useCallback(() => {
@@ -374,34 +419,43 @@ export default function EquipmentSelector({
             để chọn máy móc từ Kho Thiết bị và tính tổng công suất điện tự động.
           </p>
         </div>
-      ) : assignedViewMode === 'table' ? (
-        <div className="overflow-x-auto pb-20 print:pb-0 print:overflow-visible">
-          <table className="w-full text-left border-collapse text-sm">
-            <thead>
-              <tr className="bg-slate-900/80 border-b border-slate-700/80 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-100 print:text-gray-700 print:border-gray-300">
-                <th className="py-2.5 px-3 font-semibold">Thiết bị / Thông số</th>
-                <th
-                  className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap ${
-                    !hasAssignedPower ? 'print:hidden' : ''
-                  }`}
-                >
-                  Đơn giá P (kW)
-                </th>
-                <th className="py-2.5 px-3 font-semibold text-center whitespace-nowrap">
-                  Số lượng
-                </th>
-                <th
-                  className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap ${
-                    !hasAssignedPower ? 'print:hidden' : ''
-                  }`}
-                >
-                  Tổng P (kW)
-                </th>
-                <th className="print:hidden py-2.5 px-3 font-semibold text-right whitespace-nowrap">
-                  Xóa
-                </th>
-              </tr>
-            </thead>
+      ) : (
+        <>
+          <div
+            className={
+              assignedViewMode === 'table'
+                ? 'overflow-x-auto pb-20 print:pb-0 print:overflow-visible'
+                : 'hidden print:block print:pb-0 print:overflow-visible'
+            }
+          >
+            <table className="w-full text-left border-collapse text-sm print:text-[11px]">
+              <thead>
+                <tr className="bg-slate-900/80 border-b border-slate-700/80 text-xs uppercase tracking-wider text-slate-400 print:bg-gray-100 print:text-gray-700 print:border-gray-300">
+                  <th className="py-2.5 px-3 font-semibold print:px-1.5 print:py-1 print:text-[11px]">
+                    Thiết bị / Thông số
+                  </th>
+                  <th
+                    className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                      !hasAssignedPower ? 'print:hidden' : ''
+                    }`}
+                  >
+                    Đơn giá P (kW)
+                  </th>
+                  <th className="py-2.5 px-3 font-semibold text-center whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px]">
+                    Số lượng
+                  </th>
+                  <th
+                    className={`py-2.5 px-3 font-semibold text-right whitespace-nowrap print:min-w-0 print:whitespace-normal print:px-1.5 print:py-1 print:text-[11px] ${
+                      !hasAssignedPower ? 'print:hidden' : ''
+                    }`}
+                  >
+                    Tổng P (kW)
+                  </th>
+                  <th className="print:hidden py-2.5 px-3 font-semibold text-right whitespace-nowrap">
+                    Xóa
+                  </th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-slate-700/60 print:divide-gray-300">
               {assignedList.map((item) => {
                 const rowPowerKw =
@@ -502,11 +556,11 @@ export default function EquipmentSelector({
                 <td className="print:hidden" />
               </tr>
             </tfoot>
-          </table>
-        </div>
-      ) : (
-        <div className="space-y-4 pb-20 print:pb-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 print:grid-cols-2">
+            </table>
+          </div>
+          {assignedViewMode === 'grid' && (
+            <div className="space-y-4 pb-20 print:hidden">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {assignedList.map((item) => {
               const rowPowerKw =
                 (Number(item.quantity) || 0) * (Number(item.power) || 0);
@@ -635,6 +689,8 @@ export default function EquipmentSelector({
             </span>
           </div>
         </div>
+          )}
+        </>
       )}
 
       {/* Modal Popup Chọn Thiết bị từ LocalStorage */}
@@ -648,7 +704,7 @@ export default function EquipmentSelector({
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-4xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-4xl max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">

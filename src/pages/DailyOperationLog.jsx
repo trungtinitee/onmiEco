@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -22,11 +22,37 @@ import {
   X,
 } from 'lucide-react';
 import { LOGO_BASE64 } from '../constants/branding';
-import { DEFAULT_CONTRACTOR_NAME, useAppContext } from '../context/AppContext';
+import {
+  DEFAULT_CONTRACTOR_NAME,
+  DEFAULT_PROJECT_ID,
+  useAppContext,
+} from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { safeSetItem } from '../utils/storage';
 
 const getLogStorageKey = (projectId) =>
-  `omniEco_Logs_${projectId || 'default-project'}`;
-const GSHEET_URL_KEY = 'dvn_gsheet_url';
+  `omniEco_Logs_${projectId || DEFAULT_PROJECT_ID}`;
+const LEGACY_GSHEET_URL_KEY = 'dvn_gsheet_url';
+const getGSheetUrlStorageKey = (projectId) =>
+  `omniEco_GSheetUrl_${projectId || DEFAULT_PROJECT_ID}`;
+
+function loadGSheetUrlFromStorage(urlStorageKey, projectId) {
+  if (typeof window === 'undefined' || !urlStorageKey) return '';
+  try {
+    const saved = window.localStorage.getItem(urlStorageKey);
+    if (saved !== null) return saved;
+    if (projectId === DEFAULT_PROJECT_ID) {
+      const legacy = window.localStorage.getItem(LEGACY_GSHEET_URL_KEY);
+      if (legacy !== null) {
+        safeSetItem(urlStorageKey, legacy);
+        return legacy;
+      }
+    }
+    return '';
+  } catch {
+    return '';
+  }
+}
 
 const APPS_SCRIPT_CODE = `function doPost(e) {
   try {
@@ -169,30 +195,23 @@ function loadLogsFromStorage(storageKey) {
 export default function DailyOperationLog() {
   const { globalQ, currentProject, printOptions, openPrintModal } =
     useAppContext();
-  const logStorageKey = getLogStorageKey(currentProject?.id);
+  const activeProjectId = currentProject?.id || DEFAULT_PROJECT_ID;
+  const logStorageKey = getLogStorageKey(activeProjectId);
+  const gsheetUrlStorageKey = getGSheetUrlStorageKey(activeProjectId);
 
-  // --- Cấu hình URL Google Sheets động ---
-  const [gsheetUrlInput, setGsheetUrlInput] = useState(() => {
-    try {
-      return window.localStorage.getItem(GSHEET_URL_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [savedGsheetUrl, setSavedGsheetUrl] = useState(() => {
-    try {
-      return window.localStorage.getItem(GSHEET_URL_KEY) || '';
-    } catch {
-      return '';
-    }
-  });
-  const [syncSettingsOpen, setSyncSettingsOpen] = useState(() => {
-    try {
-      return !isValidHttpUrl(window.localStorage.getItem(GSHEET_URL_KEY) || '');
-    } catch {
-      return true;
-    }
-  });
+  // --- Cấu hình URL Google Sheets động gắn theo Dự án hiện tại ---
+  const [gsheetUrlInput, setGsheetUrlInput] = useState(() =>
+    loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId)
+  );
+  const [savedGsheetUrl, setSavedGsheetUrl] = useState(() =>
+    loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId)
+  );
+  const [syncSettingsOpen, setSyncSettingsOpen] = useState(
+    () =>
+      !isValidHttpUrl(
+        loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId)
+      )
+  );
 
   // --- Dữ liệu Nhật ký trong localStorage gắn theo Dự án hiện tại ---
   const [logsState, setLogsState] = useState(() => ({
@@ -228,8 +247,15 @@ export default function DailyOperationLog() {
   const [copiedCode, setCopiedCode] = useState(false);
   const [viewMode, setViewMode] = useState('table');
 
-  // Tự động tải lại nhật ký của dự án mới khi đổi dự án
+  // Tự động tải lại nhật ký & URL Google Sheets của dự án mới khi đổi dự án
   useEffect(() => {
+    const nextUrl = loadGSheetUrlFromStorage(
+      gsheetUrlStorageKey,
+      activeProjectId
+    );
+    setGsheetUrlInput(nextUrl);
+    setSavedGsheetUrl(nextUrl);
+    setSyncSettingsOpen(!isValidHttpUrl(nextUrl));
     setLogsState({
       key: logStorageKey,
       items: loadLogsFromStorage(logStorageKey),
@@ -238,7 +264,9 @@ export default function DailyOperationLog() {
     setLogToDelete(null);
     setFlowTouched(false);
     setForm(createDefaultForm(globalQ));
-  }, [logStorageKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [logStorageKey, gsheetUrlStorageKey, activeProjectId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useBodyScrollLock(Boolean(guideOpen || logToDelete));
 
   // Đóng Modal bằng phím Escape
   useEffect(() => {
@@ -259,11 +287,7 @@ export default function DailyOperationLog() {
   // Chỉ ghi localStorage khi logsState.key khớp đúng logStorageKey hiện hành (tránh ghi đè chéo dự án)
   useEffect(() => {
     if (logsState.key !== logStorageKey) return;
-    try {
-      window.localStorage.setItem(logStorageKey, JSON.stringify(logsState.items));
-    } catch {
-      // Ignore storage quota errors safely
-    }
+    safeSetItem(logStorageKey, JSON.stringify(logsState.items));
   }, [logsState, logStorageKey]);
 
   // Keep flowQ synced with globalQ suggestion when not editing & user hasn't manually changed it
@@ -308,10 +332,24 @@ export default function DailyOperationLog() {
     };
   }, [logs]);
 
+  const toastTimerRef = useRef(null);
+  const copyTimerRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    };
+  }, []);
+
   const showToast = (ok, message) => {
     setToast({ ok, message });
-    window.setTimeout(() => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
       setToast((prev) => (prev?.message === message ? null : prev));
+      toastTimerRef.current = null;
     }, 5500);
   };
 
@@ -322,7 +360,11 @@ export default function DailyOperationLog() {
 
     if (!trimmed) {
       try {
-        window.localStorage.removeItem(GSHEET_URL_KEY);
+        if (activeProjectId === DEFAULT_PROJECT_ID) {
+          safeSetItem(gsheetUrlStorageKey, '');
+        } else {
+          window.localStorage.removeItem(gsheetUrlStorageKey);
+        }
       } catch {
         // Ignore
       }
@@ -342,11 +384,7 @@ export default function DailyOperationLog() {
       return;
     }
 
-    try {
-      window.localStorage.setItem(GSHEET_URL_KEY, trimmed);
-    } catch {
-      // Ignore storage errors
-    }
+    safeSetItem(gsheetUrlStorageKey, trimmed);
     setGsheetUrlInput(trimmed);
     setSavedGsheetUrl(trimmed);
     setSyncSettingsOpen(false);
@@ -358,8 +396,12 @@ export default function DailyOperationLog() {
     try {
       await navigator.clipboard.writeText(APPS_SCRIPT_CODE);
       setCopiedCode(true);
-      window.setTimeout(() => {
+      if (copyTimerRef.current) {
+        window.clearTimeout(copyTimerRef.current);
+      }
+      copyTimerRef.current = window.setTimeout(() => {
         setCopiedCode(false);
+        copyTimerRef.current = null;
       }, 2000);
     } catch {
       showToast(
@@ -371,12 +413,10 @@ export default function DailyOperationLog() {
 
   // --- Hàm gửi dữ liệu lên Google Sheets bằng fetch('POST') ---
   const submitToGoogleSheets = async (formData) => {
-    let targetUrl = '';
-    try {
-      targetUrl = (window.localStorage.getItem(GSHEET_URL_KEY) || '').trim();
-    } catch {
-      targetUrl = savedGsheetUrl.trim();
-    }
+    const targetUrl = (
+      loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId) ||
+      savedGsheetUrl
+    ).trim();
 
     if (!isValidHttpUrl(targetUrl)) {
       return {
@@ -537,12 +577,10 @@ export default function DailyOperationLog() {
     }
 
     // 2. Kiểm tra URL Google Sheets trước khi fetch
-    let storedUrl = '';
-    try {
-      storedUrl = (window.localStorage.getItem(GSHEET_URL_KEY) || '').trim();
-    } catch {
-      storedUrl = savedGsheetUrl.trim();
-    }
+    const storedUrl = (
+      loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId) ||
+      savedGsheetUrl
+    ).trim();
 
     if (!isValidHttpUrl(storedUrl)) {
       setSyncSettingsOpen(true);
@@ -610,12 +648,10 @@ export default function DailyOperationLog() {
       return;
     }
 
-    let storedUrl = '';
-    try {
-      storedUrl = (window.localStorage.getItem(GSHEET_URL_KEY) || '').trim();
-    } catch {
-      storedUrl = savedGsheetUrl.trim();
-    }
+    const storedUrl = (
+      loadGSheetUrlFromStorage(gsheetUrlStorageKey, activeProjectId) ||
+      savedGsheetUrl
+    ).trim();
 
     if (!isValidHttpUrl(storedUrl)) {
       setSyncSettingsOpen(true);
@@ -1362,7 +1398,7 @@ export default function DailyOperationLog() {
                         {Number(row.sv30 || 0).toFixed(0)}
                       </td>
                       <td className="py-3 px-3 text-xs font-mono text-slate-300 border-r border-slate-700/50 print:text-black print:border-black">
-                        <div className="space-y-0.5 whitespace-nowrap">
+                        <div className="space-y-0.5 whitespace-nowrap print:whitespace-normal">
                           <div>
                             PAC: {formatChemicalDisplay(row.pac, 'kg')} · Poly:{' '}
                             {Number(row.polymer || 0)} kg
@@ -1608,7 +1644,7 @@ export default function DailyOperationLog() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-3xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl text-slate-200 shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-3xl max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl text-slate-200 shadow-2xl overflow-hidden"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between gap-4 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 bg-slate-900/60 shrink-0">
@@ -1784,7 +1820,7 @@ export default function DailyOperationLog() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h3

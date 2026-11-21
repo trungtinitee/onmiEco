@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const MEP_EQUIPMENT_LABELS = {
   pipe: 'Tuyến Ống thủy lực',
@@ -105,7 +106,7 @@ export default function MEPHydraulics() {
   const [activeTab, setActiveTab] = useState('pipe');
 
   // --- TAB 1: ỐNG THỦY LỰC ---
-  const [pipe, setPipe] = useState({
+  const [pipe, setPipe] = useProjectState('mep_pipe', {
     flowSource: 'qMax', // qMax | qAvg | custom
     customFlowM3h: 60,
     targetVelMs: 1.2,
@@ -113,10 +114,10 @@ export default function MEPHydraulics() {
     tempC: 30,
     pressureBar: 3.5,
   });
-  const [pipeOverride, setPipeOverride] = useState(null); // { material, dn }
+  const [pipeOverride, setPipeOverride] = useProjectState('mep_pipeOverride', null); // { material, dn }
 
   // --- TAB 2: BƠM CÔNG NGHỆ ---
-  const [pump, setPump] = useState({
+  const [pump, setPump] = useProjectState('mep_pump', {
     flowSource: 'qMax',
     customFlowM3h: 60,
     staticHeadM: 8.0,
@@ -131,7 +132,7 @@ export default function MEPHydraulics() {
   });
 
   // --- TAB 3: PHỄU THU BÙN INOX ---
-  const [hopper, setHopper] = useState({
+  const [hopper, setHopper] = useProjectState('mep_hopper', {
     shape: 'Vuông', // Vuông | Chữ nhật | Tròn
     targetVolM3: 1.2,
     heightH: 1.5,
@@ -139,10 +140,10 @@ export default function MEPHydraulics() {
     ratioLW: 1.5, // cho hình chữ nhật
     plateThicknessMm: 3.0,
   });
-  const [hopperOv, setHopperOv] = useState(null);
+  const [hopperOv, setHopperOv] = useProjectState('mep_hopperOv', null);
 
   // --- TAB 4: BỘ TRỘN TĨNH & EDUCTOR ---
-  const [eductor, setEductor] = useState({
+  const [eductor, setEductor] = useProjectState('mep_eductor', {
     // Phần 1: Static Mixer
     mixerFlowM3h: 60,
     mixerDn: 100,

@@ -13,6 +13,7 @@ import {
   Wind,
   Wrench,
 } from 'lucide-react';
+import { useProjectState } from '../hooks/useProjectState';
 
 const BIO_DIAGNOSTICS_DATA = [
   // NHÓM 1: BỌT (FOAM & SCUM)
@@ -199,7 +200,7 @@ export default function BioDiagnostics() {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [openIds, setOpenIds] = useState(() => new Set(['foam-white']));
-  const [checkedSteps, setCheckedSteps] = useState({});
+  const [checkedSteps, setCheckedSteps] = useProjectState('diag_checkedSteps', {});
 
   const categoryCounts = useMemo(() => {
     const counts = { all: BIO_DIAGNOSTICS_DATA.length };

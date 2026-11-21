@@ -24,8 +24,534 @@
   font-variant-numeric: tabular-nums;
 }
 
-.print-only {
-  display: none;
+/* ==========================================================================
+   GIAO DIỆN MÀN HÌNH (SCREEN ONLY) — TUYỆT ĐỐI KHÔNG ẢNH HƯỞNG @media print
+   ========================================================================== */
+@media screen {
+  /* ------------------------------------------------------------------------
+     1. TĂNG ĐỘ TƯƠNG PHẢN Ô NHẬP LIỆU TRÊN DARK MODE (Dễ đọc trên Mobile)
+     ------------------------------------------------------------------------ */
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  html.dark select,
+  html.dark textarea {
+    border-color: #475569; /* slate-600 */
+  }
+
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):hover:not(:disabled),
+  html.dark select:hover:not(:disabled),
+  html.dark textarea:hover:not(:disabled) {
+    border-color: #64748b; /* slate-500 */
+  }
+
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):focus,
+  html.dark select:focus,
+  html.dark textarea:focus {
+    border-color: #10b981; /* Eco Green */
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.35);
+    outline: none;
+  }
+
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #94a3b8; /* slate-400 */
+    opacity: 1;
+  }
+
+  /* ------------------------------------------------------------------------
+     2. LIGHT MODE ĐỘ TƯƠNG PHẢN CAO — CHỐNG LÓA NGOÀI NẮNG CÔNG TRƯỜNG
+     ------------------------------------------------------------------------ */
+  html.light {
+    color-scheme: light;
+  }
+
+  html.light body {
+    background-color: #f1f5f9;
+    color: #0f172a;
+  }
+
+  html.light ::selection {
+    background-color: rgba(5, 150, 105, 0.2);
+    color: #064e3b;
+  }
+
+  /* Nền tổng thể & Thanh điều hướng / Header / Modal / Dropdown */
+  html.light .min-h-screen.bg-slate-900 {
+    background-color: #f1f5f9;
+    color: #0f172a;
+  }
+
+  html.light header.bg-slate-900\/95 {
+    background-color: rgba(255, 255, 255, 0.96);
+    border-color: #cbd5e1;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+  }
+
+  html.light aside.bg-slate-900 {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 1px 0 6px rgba(15, 23, 42, 0.05);
+  }
+
+  /* Logo nền tối gọn gàng giúp chữ trắng trên logo omniEco luôn sắc nét trên nền sáng */
+  html.light aside a[aria-label="omniEco - Trang chủ"],
+  html.light header a[aria-label="omniEco - Về trang chủ"] {
+    background-color: #0f172a;
+    padding: 0.25rem 0.625rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+  }
+
+  /* SplashScreen trên Light Mode */
+  html.light [aria-label="Đang tải ứng dụng omniEco"] {
+    background-color: #f8fafc;
+  }
+  html.light [aria-label="Đang tải ứng dụng omniEco"] .bg-slate-800\/90 {
+    background-color: #0f172a;
+    border-color: rgba(5, 150, 105, 0.45);
+  }
+
+  /* Khung Modal & Dropdown menu */
+  html.light [role="dialog"] > .bg-slate-900,
+  html.light [role="menu"].bg-slate-900,
+  html.light .bg-slate-900.shadow-2xl {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 0 20px 38px -12px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(203, 213, 225, 0.8);
+  }
+
+  html.light [role="dialog"] .bg-slate-900\/90 {
+    background-color: rgba(248, 250, 252, 0.96);
+    border-color: #cbd5e1;
+  }
+
+  html.light .bg-black\/60,
+  html.light .bg-slate-950\/75.fixed {
+    background-color: rgba(15, 23, 42, 0.45);
+  }
+
+  /* Thẻ (Card), Section, Panel chính (bg-slate-800) -> Nền trắng tinh, viền rõ, bóng nhẹ */
+  html.light .bg-slate-800,
+  html.light .bg-slate-800\/95,
+  html.light .bg-slate-800\/90,
+  html.light .bg-slate-800\/80 {
+    background-color: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  }
+
+  html.light .bg-slate-800\/70,
+  html.light .bg-slate-800\/60,
+  html.light .bg-slate-800\/50,
+  html.light .bg-slate-800\/40 {
+    background-color: #f8fafc;
+  }
+
+  /* Nút & thành phần phụ nằm trên nền trắng (bg-slate-800 / bg-slate-700) */
+  html.light button.bg-slate-800,
+  html.light button.bg-slate-800\/90,
+  html.light button.bg-slate-800\/80,
+  html.light button.bg-slate-800\/70,
+  html.light button.bg-slate-800\/60,
+  html.light button.bg-slate-800\/50,
+  html.light button.bg-slate-800\/40,
+  html.light a.bg-slate-800,
+  html.light span.bg-slate-800 {
+    background-color: #f1f5f9;
+    box-shadow: none;
+  }
+
+  html.light .bg-slate-700,
+  html.light .bg-slate-700\/50 {
+    background-color: #e2e8f0;
+  }
+
+  /* Khối lồng bên trong thẻ (Inset wells, KPI boxes, Table header, Sidebar group) */
+  html.light .bg-slate-900,
+  html.light .bg-slate-900\/95,
+  html.light .bg-slate-900\/90,
+  html.light .bg-slate-900\/80,
+  html.light .bg-slate-900\/70,
+  html.light .bg-slate-900\/60,
+  html.light .bg-slate-900\/50,
+  html.light .bg-slate-900\/40,
+  html.light .bg-slate-950,
+  html.light .bg-slate-950\/75,
+  html.light .bg-slate-950\/60,
+  html.light .bg-slate-950\/30 {
+    background-color: #f8fafc;
+  }
+
+  /* Đảm bảo Sidebar/Header/Modal giữ nền trắng (ưu tiên cao hơn generic .bg-slate-900) */
+  html.light aside.bg-slate-900,
+  html.light [role="menu"].bg-slate-900,
+  html.light [role="dialog"] > div.bg-slate-900,
+  html.light [role="dialog"] > .bg-slate-900 {
+    background-color: #ffffff;
+  }
+
+  html.light header.bg-slate-900\/95 {
+    background-color: rgba(255, 255, 255, 0.96);
+  }
+
+  html.light .min-h-screen.bg-slate-900 {
+    background-color: #f1f5f9;
+  }
+
+  html.light .bg-slate-950\/30.fixed {
+    background-color: rgba(15, 23, 42, 0.22);
+  }
+
+  html.light .bg-slate-950\/75.fixed {
+    background-color: rgba(15, 23, 42, 0.45);
+  }
+
+  /* Giữ nền tối thương hiệu cho khung Logo trên Trang chủ khi bật Light Mode */
+  html.light .brand-logo-badge {
+    background: linear-gradient(135deg, #0f172a 0%, #132238 100%);
+    border-color: rgba(5, 150, 105, 0.45);
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.14);
+  }
+
+  /* Bảng dữ liệu (Table) */
+  html.light table {
+    background-color: #ffffff;
+  }
+
+  html.light table thead tr,
+  html.light table thead th {
+    background-color: #f1f5f9;
+    color: #0f172a;
+    border-color: #cbd5e1;
+  }
+
+  html.light table tbody td {
+    border-color: #e2e8f0;
+  }
+
+  /* Ô nhập liệu trên Light Mode — Nền trắng tinh, viền xám đậm dễ nhìn ngoài nắng */
+  html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  html.light select,
+  html.light textarea {
+    background-color: #ffffff;
+    border-color: #94a3b8;
+    color: #0f172a;
+    box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04);
+  }
+
+  html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):hover:not(:disabled),
+  html.light select:hover:not(:disabled),
+  html.light textarea:hover:not(:disabled) {
+    border-color: #64748b;
+  }
+
+  html.light input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]):focus,
+  html.light select:focus,
+  html.light textarea:focus {
+    border-color: #059669;
+    box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.25);
+    outline: none;
+  }
+
+  html.light input::placeholder,
+  html.light textarea::placeholder {
+    color: #64748b;
+    opacity: 1;
+  }
+
+  /* Viền & Đường phân cách (Borders & Dividers) */
+  html.light .border-slate-800,
+  html.light .border-slate-800\/80,
+  html.light .border-slate-800\/60 {
+    border-color: #e2e8f0;
+  }
+
+  html.light .border-slate-700,
+  html.light .border-slate-700\/90,
+  html.light .border-slate-700\/80,
+  html.light .border-slate-700\/70,
+  html.light .border-slate-700\/60,
+  html.light .border-slate-700\/50 {
+    border-color: #cbd5e1;
+  }
+
+  html.light .border-slate-600 {
+    border-color: #94a3b8;
+  }
+
+  html.light .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+  html.light .divide-slate-800\/70 > :not([hidden]) ~ :not([hidden]),
+  html.light .divide-slate-700\/70 > :not([hidden]) ~ :not([hidden]),
+  html.light .divide-slate-700\/60 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #e2e8f0;
+  }
+
+  /* Trạng thái Hover nền */
+  html.light .hover\:bg-slate-800:hover,
+  html.light .hover\:bg-slate-800\/80:hover,
+  html.light .hover\:bg-slate-800\/70:hover,
+  html.light .hover\:bg-slate-800\/60:hover,
+  html.light .hover\:bg-slate-800\/50:hover,
+  html.light .hover\:bg-slate-700:hover,
+  html.light .hover\:bg-slate-700\/80:hover,
+  html.light .hover\:bg-slate-700\/70:hover,
+  html.light .hover\:bg-slate-700\/60:hover,
+  html.light .hover\:bg-slate-700\/40:hover,
+  html.light .hover\:bg-slate-600:hover {
+    background-color: #e2e8f0;
+  }
+
+  html.light .hover\:bg-slate-900\/50:hover,
+  html.light .hover\:bg-slate-900\/40:hover {
+    background-color: #f1f5f9;
+  }
+
+  html.light .hover\:border-slate-600:hover,
+  html.light .hover\:border-slate-500:hover {
+    border-color: #94a3b8;
+  }
+
+  /* Hệ thống chữ tương phản cao (Chống lóa ngoài nắng) */
+  html.light .text-slate-100,
+  html.light .text-slate-200 {
+    color: #0f172a;
+  }
+
+  html.light .text-slate-300 {
+    color: #334155;
+  }
+
+  html.light .text-slate-400 {
+    color: #475569;
+  }
+
+  html.light .text-slate-500,
+  html.light .text-slate-600 {
+    color: #64748b;
+  }
+
+  /* Chữ trắng không nằm trên nút màu đặc -> chuyển xanh đen đậm để không mất chữ */
+  html.light .text-white:not(.bg-emerald-500):not(.bg-emerald-600):not(.bg-emerald-700):not(.bg-sky-500):not(.bg-sky-600):not(.bg-red-500):not(.bg-red-600):not(.bg-amber-500) {
+    color: #0f172a;
+  }
+
+  html.light .hover\:text-slate-100:hover,
+  html.light .hover\:text-slate-200:hover,
+  html.light .group:hover .group-hover\:text-slate-100,
+  html.light .group:hover .group-hover\:text-slate-200 {
+    color: #0f172a;
+  }
+
+  html.light .hover\:text-white:hover:not(.hover\:bg-emerald-600):not(.hover\:bg-emerald-500):not(.hover\:bg-red-600):not(.hover\:bg-red-500):not(.bg-emerald-600):not(.bg-red-600):not(.bg-sky-600) {
+    color: #0f172a;
+  }
+
+  html.light .hover\:text-slate-400:hover {
+    color: #475569;
+  }
+
+  /* Bản sắc Eco Green (Chỉnh đậm hơn 1-2 bậc để nổi bật trên nền sáng) */
+  html.light .text-emerald-500,
+  html.light .text-emerald-400,
+  html.light .text-emerald-400\/90,
+  html.light .text-emerald-500\/80,
+  html.light .text-emerald-300 {
+    color: #047857;
+  }
+
+  html.light .text-emerald-200,
+  html.light .text-emerald-100 {
+    color: #065f46;
+  }
+
+  html.light .hover\:text-emerald-400:hover,
+  html.light .hover\:text-emerald-300:hover,
+  html.light .group:hover .group-hover\:text-emerald-400 {
+    color: #047857;
+  }
+
+  html.light .bg-emerald-950\/60,
+  html.light .bg-emerald-950\/50,
+  html.light .bg-emerald-950\/45,
+  html.light .bg-emerald-950\/40,
+  html.light .bg-emerald-950\/35,
+  html.light .bg-emerald-950\/30,
+  html.light .bg-emerald-950\/25,
+  html.light .bg-emerald-900\/50,
+  html.light .bg-emerald-500\/10,
+  html.light .bg-emerald-500\/15,
+  html.light .bg-emerald-500\/20,
+  html.light .bg-emerald-600\/20 {
+    background-color: #ecfdf5;
+  }
+
+  html.light .hover\:bg-emerald-500\/15:hover,
+  html.light .hover\:bg-emerald-600\/20:hover,
+  html.light .hover\:bg-emerald-600\/30:hover {
+    background-color: #d1fae5;
+  }
+
+  html.light .border-emerald-500\/30,
+  html.light .border-emerald-500\/35,
+  html.light .border-emerald-500\/40,
+  html.light .border-emerald-500\/45,
+  html.light .border-emerald-500\/50,
+  html.light .border-emerald-500\/60,
+  html.light .border-emerald-400\/30 {
+    border-color: #34d399;
+  }
+
+  html.light .border-emerald-500,
+  html.light .border-emerald-400 {
+    border-color: #059669;
+  }
+
+  html.light .bg-emerald-600 {
+    background-color: #059669;
+    color: #ffffff;
+  }
+
+  html.light .bg-emerald-600:hover,
+  html.light .hover\:bg-emerald-500:hover,
+  html.light .hover\:bg-emerald-600:hover {
+    background-color: #047857;
+    color: #ffffff;
+  }
+
+  html.light .bg-emerald-500 {
+    background-color: #059669;
+  }
+
+  html.light .bg-emerald-500.text-slate-950 {
+    color: #ffffff;
+  }
+
+  /* Màu ngữ nghĩa Nước (Cyan / Sky Blue) */
+  html.light .text-sky-400,
+  html.light .text-sky-300 {
+    color: #0369a1;
+  }
+
+  html.light .text-sky-200 {
+    color: #075985;
+  }
+
+  html.light .hover\:text-sky-300:hover {
+    color: #0369a1;
+  }
+
+  html.light .bg-sky-500\/10,
+  html.light .bg-sky-500\/15,
+  html.light .bg-sky-500\/20 {
+    background-color: #e0f2fe;
+  }
+
+  html.light .hover\:bg-sky-500\/20:hover,
+  html.light .hover\:bg-sky-500\/25:hover,
+  html.light .hover\:bg-sky-500\/30:hover {
+    background-color: #bae6fd;
+  }
+
+  html.light .border-sky-500\/30,
+  html.light .border-sky-400\/40 {
+    border-color: #38bdf8;
+  }
+
+  html.light .bg-sky-600 {
+    background-color: #0284c7;
+    color: #ffffff;
+  }
+
+  /* Màu ngữ nghĩa Điện & Cảnh báo (Amber) */
+  html.light .text-amber-400,
+  html.light .text-amber-300 {
+    color: #b45309;
+  }
+
+  html.light .text-amber-200 {
+    color: #92400e;
+  }
+
+  html.light .bg-amber-500\/10,
+  html.light .bg-amber-500\/15 {
+    background-color: #fef3c7;
+  }
+
+  html.light .hover\:bg-amber-500\/25:hover {
+    background-color: #fde68a;
+  }
+
+  html.light .border-amber-500\/30,
+  html.light .border-amber-500\/40,
+  html.light .border-amber-500\/50 {
+    border-color: #f59e0b;
+  }
+
+  /* Màu ngữ nghĩa Lỗi / Vượt ngưỡng (Red / Rose) */
+  html.light .text-red-500,
+  html.light .text-red-400,
+  html.light .text-red-300 {
+    color: #b91c1c;
+  }
+
+  html.light .text-red-200 {
+    color: #991b1b;
+  }
+
+  html.light .hover\:text-red-400:hover,
+  html.light .hover\:text-red-300:hover {
+    color: #b91c1c;
+  }
+
+  html.light .bg-red-950\/60,
+  html.light .bg-red-950\/40,
+  html.light .bg-red-500\/10,
+  html.light .bg-red-500\/15 {
+    background-color: #fef2f2;
+  }
+
+  html.light .hover\:bg-red-950\/70:hover,
+  html.light .hover\:bg-red-950\/60:hover,
+  html.light .hover\:bg-red-950\/40:hover,
+  html.light .hover\:bg-red-500\/15:hover,
+  html.light .hover\:bg-red-500\/25:hover {
+    background-color: #fee2e2;
+  }
+
+  html.light .border-red-500\/35,
+  html.light .border-red-500\/40,
+  html.light .border-red-500\/50 {
+    border-color: #f87171;
+  }
+
+  html.light .bg-red-600 {
+    background-color: #dc2626;
+    color: #ffffff;
+  }
+
+  html.light .bg-red-600:hover,
+  html.light .hover\:bg-red-500:hover,
+  html.light .hover\:bg-red-600:hover {
+    background-color: #b91c1c;
+    color: #ffffff;
+  }
+
+  /* Màu ngữ nghĩa bổ sung (Purple / Violet) */
+  html.light .text-purple-300,
+  html.light .text-violet-400 {
+    color: #6d28d9;
+  }
+
+  html.light .bg-purple-500\/15 {
+    background-color: #f3e8ff;
+  }
+
+  html.light .border-purple-500\/30 {
+    border-color: #c084fc;
+  }
+
+  /* Thanh chu kỳ SBR màu xám nhạt */
+  html.light .bg-slate-400 {
+    background-color: #64748b;
+  }
 }
 
 /* Chế độ In Báo Cáo Kỹ Thuật (Print to PDF) */
@@ -58,11 +584,8 @@
     display: none !important;
   }
 
-  .print-only {
-    display: block !important;
-  }
-
-  .print-logo-badge {
+  .print-logo-badge,
+  .brand-logo-badge {
     background-color: #0f172a !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

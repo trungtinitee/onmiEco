@@ -1,5 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { Calculator, Printer, RotateCcw, Wrench, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Calculator,
+  ClipboardList,
+  Printer,
+  RotateCcw,
+  Wrench,
+  X,
+} from 'lucide-react';
 
 const FloatingToolMenu = memo(function FloatingToolMenu({
   onPrintPdf,
@@ -7,9 +15,20 @@ const FloatingToolMenu = memo(function FloatingToolMenu({
   onResetData,
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const handleClose = useCallback(() => setIsOpen(false), []);
   const handleToggle = useCallback(() => setIsOpen((prev) => !prev), []);
+
+  const handleOpenOperationLog = useCallback(() => {
+    setIsOpen(false);
+    if (location.pathname === '/nhat-ky-van-hanh') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      navigate('/nhat-ky-van-hanh');
+    }
+  }, [location.pathname, navigate]);
 
   // Đóng menu khi bấm phím Escape
   useEffect(() => {
@@ -25,6 +44,14 @@ const FloatingToolMenu = memo(function FloatingToolMenu({
 
   const actions = useMemo(
     () => [
+      {
+        id: 'operation-log',
+        label: 'Nhật ký vận hành',
+        icon: ClipboardList,
+        delayClass: 'delay-[90ms]',
+        onClick: handleOpenOperationLog,
+        tone: 'hover:bg-emerald-600 hover:border-emerald-500 hover:text-white text-emerald-400',
+      },
       {
         id: 'print',
         label: 'In báo cáo PDF',
@@ -59,7 +86,7 @@ const FloatingToolMenu = memo(function FloatingToolMenu({
         tone: 'hover:bg-red-600 hover:border-red-500 hover:text-white text-amber-400',
       },
     ],
-    [onPrintPdf, onOpenWidget, onResetData]
+    [handleOpenOperationLog, onPrintPdf, onOpenWidget, onResetData]
   );
 
   return (

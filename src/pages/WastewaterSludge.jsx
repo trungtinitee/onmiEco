@@ -9,6 +9,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const SLUDGE_EQUIPMENT_LABELS = {
   thickener: 'Bể Nén bùn đứng',
@@ -65,7 +66,7 @@ export default function WastewaterSludge() {
   const [activeTab, setActiveTab] = useState('thickener');
 
   // --- Tab 1: Nén bùn đứng ---
-  const [thickener, setThickener] = useState({
+  const [thickener, setThickener] = useProjectState('sludge_thickener', {
     shape: 'Tròn',
     sludgeFlowPct: 2.0, // % so với globalQ
     ssInMgL: 8000, // mg/L (0.8%)
@@ -76,10 +77,13 @@ export default function WastewaterSludge() {
     hrtMin: 12, // giờ
     depthH: 3.5, // m
   });
-  const [thickenerOverride, setThickenerOverride] = useState(null);
+  const [thickenerOverride, setThickenerOverride] = useProjectState(
+    'sludge_thickenerOverride',
+    null
+  );
 
   // --- Tab 2: Máy ép bùn Khung bản / Trục vít ---
-  const [dewatering, setDewatering] = useState({
+  const [dewatering, setDewatering] = useProjectState('sludge_dewatering', {
     machineType: 'Khung bản',
     operateHours: 8, // giờ/ngày
     cakeMoisturePct: 75, // % độ ẩm bùn bánh
@@ -90,7 +94,7 @@ export default function WastewaterSludge() {
   });
 
   // --- Tab 3: Sân phơi bùn ---
-  const [dryingBed, setDryingBed] = useState({
+  const [dryingBed, setDryingBed] = useProjectState('sludge_dryingBed', {
     numBeds: 4, // số ô sân phơi
     solidsLoadingYear: 100, // kg DS / m2.năm (chuẩn 80 - 150)
     sludgeDepthM: 0.25, // chiều cao lớp bùn đổ 1 mẻ (m)

@@ -1,56 +1,82 @@
-import { memo, useEffect, useState } from 'react';
+import { Suspense, lazy, memo, useEffect, useState } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
+import { AppProvider, useAppContext } from './context/AppContext';
 import Layout from './components/Layout';
 import SplashScreen from './components/SplashScreen';
-import Dashboard from './pages/Dashboard';
-import WastewaterInput from './pages/WastewaterInput';
-import WastewaterPretreatment from './pages/WastewaterPretreatment';
-import WastewaterBiology from './pages/WastewaterBiology';
-import WastewaterTertiary from './pages/WastewaterTertiary';
-import WastewaterSludge from './pages/WastewaterSludge';
-import PhysicochemicalCalc from './pages/PhysicochemicalCalc';
-import WaterSupplyBasic from './pages/WaterSupplyBasic';
-import WaterSupplyAdvanced from './pages/WaterSupplyAdvanced';
-import AirEmissionsCalc from './pages/AirEmissionsCalc';
-import SolidWasteCalc from './pages/SolidWasteCalc';
-import MEPHydraulics from './pages/MEPHydraulics';
-import ElectricalCalc from './pages/ElectricalCalc';
-import OperationsCalc from './pages/OperationsCalc';
-import DailyOperationLog from './pages/DailyOperationLog';
-import BioDiagnostics from './pages/BioDiagnostics';
 import EquipmentDBManager from './components/EquipmentDBManager';
 import ProcurementList from './components/ProcurementList';
 
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const WastewaterInput = lazy(() => import('./pages/WastewaterInput'));
+const WastewaterPretreatment = lazy(() => import('./pages/WastewaterPretreatment'));
+const WastewaterBiology = lazy(() => import('./pages/WastewaterBiology'));
+const WastewaterTertiary = lazy(() => import('./pages/WastewaterTertiary'));
+const WastewaterSludge = lazy(() => import('./pages/WastewaterSludge'));
+const PhysicochemicalCalc = lazy(() => import('./pages/PhysicochemicalCalc'));
+const WaterSupplyBasic = lazy(() => import('./pages/WaterSupplyBasic'));
+const WaterSupplyAdvanced = lazy(() => import('./pages/WaterSupplyAdvanced'));
+const AirEmissionsCalc = lazy(() => import('./pages/AirEmissionsCalc'));
+const SolidWasteCalc = lazy(() => import('./pages/SolidWasteCalc'));
+const MEPHydraulics = lazy(() => import('./pages/MEPHydraulics'));
+const ElectricalCalc = lazy(() => import('./pages/ElectricalCalc'));
+const OperationsCalc = lazy(() => import('./pages/OperationsCalc'));
+const DailyOperationLog = lazy(() => import('./pages/DailyOperationLog'));
+const BioDiagnostics = lazy(() => import('./pages/BioDiagnostics'));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center p-6">
+      <div className="flex items-center gap-3 rounded-xl border border-slate-700/80 bg-slate-800/80 px-4 py-3 text-sm text-slate-300 shadow-lg">
+        <span
+          aria-hidden="true"
+          className="h-4 w-4 animate-spin rounded-full border-2 border-slate-600 border-t-emerald-400"
+        />
+        <span>Đang tải phân hệ...</span>
+      </div>
+    </div>
+  );
+}
+
 const AppRoutes = memo(function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<Dashboard />} />
-      <Route path="/thong-so-dau-vao" element={<WastewaterInput />} />
-      <Route path="/tien-xu-ly" element={<WastewaterPretreatment />} />
-      <Route path="/hoa-ly" element={<PhysicochemicalCalc />} />
-      <Route path="/sinh-hoc" element={<WastewaterBiology />} />
-      <Route path="/hoan-thien-khu-trung" element={<WastewaterTertiary />} />
-      <Route path="/xu-ly-bun" element={<WastewaterSludge />} />
-      <Route
-        path="/bun-khu-trung"
-        element={<Navigate to="/xu-ly-bun" replace />}
-      />
-      <Route path="/cap-nuoc" element={<WaterSupplyBasic />} />
-      <Route path="/cap-nuoc-nang-cao" element={<WaterSupplyAdvanced />} />
-      <Route path="/khi-thai" element={<AirEmissionsCalc />} />
-      <Route path="/chat-thai-ran" element={<SolidWasteCalc />} />
-      <Route path="/mep-thuy-luc" element={<MEPHydraulics />} />
-      <Route path="/dien-may-thoi-khi" element={<ElectricalCalc />} />
-      <Route path="/van-hanh" element={<OperationsCalc />} />
-      <Route path="/nhat-ky-van-hanh" element={<DailyOperationLog />} />
-      <Route path="/chan-doan-sinh-hoc" element={<BioDiagnostics />} />
-      <Route path="/kho-thiet-bi" element={<EquipmentDBManager />} />
-      <Route path="/mua-sam" element={<ProcurementList />} />
-      <Route path="/bom" element={<Navigate to="/mua-sam" replace />} />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <Suspense fallback={<RouteFallback />}>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/thong-so-dau-vao" element={<WastewaterInput />} />
+        <Route path="/tien-xu-ly" element={<WastewaterPretreatment />} />
+        <Route path="/hoa-ly" element={<PhysicochemicalCalc />} />
+        <Route path="/sinh-hoc" element={<WastewaterBiology />} />
+        <Route path="/hoan-thien-khu-trung" element={<WastewaterTertiary />} />
+        <Route path="/xu-ly-bun" element={<WastewaterSludge />} />
+        <Route
+          path="/bun-khu-trung"
+          element={<Navigate to="/xu-ly-bun" replace />}
+        />
+        <Route path="/cap-nuoc" element={<WaterSupplyBasic />} />
+        <Route path="/cap-nuoc-nang-cao" element={<WaterSupplyAdvanced />} />
+        <Route path="/khi-thai" element={<AirEmissionsCalc />} />
+        <Route path="/chat-thai-ran" element={<SolidWasteCalc />} />
+        <Route path="/mep-thuy-luc" element={<MEPHydraulics />} />
+        <Route path="/dien-may-thoi-khi" element={<ElectricalCalc />} />
+        <Route path="/van-hanh" element={<OperationsCalc />} />
+        <Route path="/nhat-ky-van-hanh" element={<DailyOperationLog />} />
+        <Route path="/chan-doan-sinh-hoc" element={<BioDiagnostics />} />
+        <Route path="/kho-thiet-bi" element={<EquipmentDBManager />} />
+        <Route path="/mua-sam" element={<ProcurementList />} />
+        <Route path="/bom" element={<Navigate to="/mua-sam" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
+});
+
+const ProjectScopedRoutes = memo(function ProjectScopedRoutes() {
+  const { currentProjectId, currentProject, projectDataRevision } =
+    useAppContext();
+  const activeKey = `${
+    currentProjectId || currentProject?.id || 'default-project'
+  }-rev${projectDataRevision || 0}`;
+  return <AppRoutes key={activeKey} />;
 });
 
 export default function App() {
@@ -80,7 +106,7 @@ export default function App() {
       {isLoading && <SplashScreen isFadingOut={isFadingOut} />}
       <BrowserRouter basename={routerBase}>
         <Layout>
-          <AppRoutes />
+          <ProjectScopedRoutes />
         </Layout>
       </BrowserRouter>
     </AppProvider>

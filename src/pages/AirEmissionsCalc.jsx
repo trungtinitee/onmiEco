@@ -16,6 +16,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const AIR_EQUIPMENT_LABELS = {
   cyclone: 'Thiết bị Lọc bụi Xyclon',
@@ -36,23 +37,23 @@ const AIR_PRESETS = [2000, 5000, 10000, 20000, 40000];
 export default function AirEmissionsCalc() {
   const { globalQ } = useAppContext();
   const [activeTab, setActiveTab] = useState('cyclone');
-  const [airFlowM3h, setAirFlowM3h] = useState(10000);
+  const [airFlowM3h, setAirFlowM3h] = useProjectState('air_airFlowM3h', 10000);
 
   const qAirHour = Math.max(0, Number(airFlowM3h) || 0);
   const qAirSec = qAirHour / 3600;
 
   // --- Tab 1: Xyclon (Mặc định Tròn) ---
-  const [cyclone, setCyclone] = useState({
+  const [cyclone, setCyclone] = useProjectState('air_cyclone', {
     model: 'Lapple', // Lapple | Stairmand
     numUnits: 1,
     bodyVelTarget: 3.0, // m/s (chuẩn 2.0 - 4.5)
     bodyVelMax: 4.5,
     inletVelMax: 25.0,
   });
-  const [cycloneOv, setCycloneOv] = useState(null);
+  const [cycloneOv, setCycloneOv] = useProjectState('air_cycloneOv', null);
 
   // --- Tab 2: Lọc túi vải ---
-  const [baghouse, setBaghouse] = useState({
+  const [baghouse, setBaghouse] = useProjectState('air_baghouse', {
     shape: 'Chữ nhật',
     airToClothMMin: 1.2, // m/phút (chuẩn 0.8 - 1.5)
     airToClothMaxMMin: 1.5,
@@ -62,20 +63,20 @@ export default function AirEmissionsCalc() {
     chamberHeightM: 4.5,
     ratioLW: 1.5,
   });
-  const [bagOv, setBagOv] = useState(null);
+  const [bagOv, setBagOv] = useProjectState('air_bagOv', null);
 
   // --- Tab 3: Tháp hấp thụ Scrubber (Mặc định Tròn) ---
-  const [scrubber, setScrubber] = useState({
+  const [scrubber, setScrubber] = useProjectState('air_scrubber', {
     gasVelTarget: 1.8, // m/s (chuẩn 1.2 - 2.2)
     floodingVelMax: 2.5, // m/s (vận tốc sặc / văng dung dịch)
     packingContactSec: 1.5, // giây
     extraHeightM: 2.2, // đáy + phân phối + tách ẩm demister
     liquidGasRatioLM3: 2.5, // L dung dịch / m3 khí
   });
-  const [scrubberOv, setScrubberOv] = useState(null);
+  const [scrubberOv, setScrubberOv] = useProjectState('air_scrubberOv', null);
 
   // --- Tab 4: Hấp phụ than (Tròn hoặc Chữ nhật) ---
-  const [adsorption, setAdsorption] = useState({
+  const [adsorption, setAdsorption] = useProjectState('air_adsorption', {
     shape: 'Tròn', // Tròn | Chữ nhật
     gasVelTarget: 0.3, // m/s (chuẩn 0.15 - 0.45)
     gasVelMax: 0.5, // m/s
@@ -83,7 +84,7 @@ export default function AirEmissionsCalc() {
     extraHeightM: 1.2,
     ratioLW: 1.5,
   });
-  const [adsOv, setAdsOv] = useState(null);
+  const [adsOv, setAdsOv] = useProjectState('air_adsOv', null);
 
   // === CALCULATIONS: 1. XYCLON ===
   const nCyclones = Math.max(1, Number(cyclone.numUnits) || 1);
@@ -151,14 +152,23 @@ export default function AirEmissionsCalc() {
       ? (Math.PI * activeBagD * activeBagD) / 4
       : activeBagL * activeBagW;
   const bagsCrossArea = activeBagsCount * ((Math.PI * bagDiaM * bagDiaM) / 4);
-  const freeGasArea = Math.max(0.01, chamberGrossArea - bagsCrossArea);
-  const interstitialVelMs = qAirHour > 0 ? qAirSec / freeGasArea : 0;
+  const rawFreeGasArea = chamberGrossArea - bagsCrossArea;
+  const isBagChamberTooSmall = rawFreeGasArea <= 0;
+  const freeGasArea = isBagChamberTooSmall ? 0 : rawFreeGasArea;
+  const interstitialVelMs =
+    !isBagChamberTooSmall && qAirHour > 0 && freeGasArea > 0
+      ? qAirSec / freeGasArea
+      : null;
 
   const isBagClothVelOk =
     qAirHour > 0 &&
     airToClothActualMMin > 0 &&
     airToClothActualMMin <= baghouse.airToClothMaxMMin;
-  const isBagUpflowOk = qAirHour > 0 && interstitialVelMs <= 1.5;
+  const isBagUpflowOk =
+    !isBagChamberTooSmall &&
+    qAirHour > 0 &&
+    interstitialVelMs !== null &&
+    interstitialVelMs <= 1.5;
   const isBagAllOk = isBagClothVelOk && isBagUpflowOk;
 
   // === CALCULATIONS: 3. THÁP HẤP THỤ SCRUBBER ===
@@ -763,20 +773,36 @@ export default function AirEmissionsCalc() {
             <StatusBanner
               ok={isBagAllOk}
               titleOk="ĐẠT CHUẨN VẬN TỐC LỌC TÚI VẢI"
-              titleFail="CẢNH BÁO ĐỎ: VẬN TỐC KHÍ QUÁ LỚN — NGUY CƠ RÁCH TÚI VẢI"
+              titleFail={
+                isBagChamberTooSmall
+                  ? 'CẢNH BÁO ĐỎ: KÍCH THƯỚC BUỒNG KHÔNG ĐỦ DIỆN TÍCH LẮP TÚI VẢI'
+                  : 'CẢNH BÁO ĐỎ: VẬN TỐC KHÍ QUÁ LỚN — NGUY CƠ RÁCH TÚI VẢI'
+              }
               message={
                 isBagAllOk
-                  ? `Vận tốc lọc qua vải (${airToClothActualMMin.toFixed(2)} m/phút) và vận tốc dâng giữa các túi (${interstitialVelMs.toFixed(2)} m/s) đạt ngưỡng an toàn.`
-                  : `${!isBagClothVelOk ? `Vận tốc qua vải thực tế (${airToClothActualMMin.toFixed(2)} m/phút) > giới hạn (${baghouse.airToClothMaxMMin} m/phút) — Nguy cơ rách túi và xuyên bụi! ` : ''}${!isBagUpflowOk ? `Vận tốc khí dâng giữa các túi (${interstitialVelMs.toFixed(2)} m/s) > 1,5 m/s gây va đập rách túi!` : ''}`
+                  ? `Vận tốc lọc qua vải (${airToClothActualMMin.toFixed(2)} m/phút) và vận tốc dâng giữa các túi (${Number(interstitialVelMs || 0).toFixed(2)} m/s) đạt ngưỡng an toàn.`
+                  : `${!isBagClothVelOk ? `Vận tốc qua vải thực tế (${airToClothActualMMin.toFixed(2)} m/phút) > giới hạn (${baghouse.airToClothMaxMMin} m/phút) — Nguy cơ rách túi và xuyên bụi! ` : ''}${
+                      isBagChamberTooSmall
+                        ? `Kích thước buồng không đủ diện tích lắp túi vải (tiết diện buồng ${chamberGrossArea.toFixed(2)} m² ≤ tổng tiết diện ${activeBagsCount} túi ${bagsCrossArea.toFixed(2)} m²). Hãy tăng kích thước buồng lọc hoặc giảm số túi.`
+                        : !isBagUpflowOk
+                          ? `Vận tốc khí dâng giữa các túi (${Number(interstitialVelMs || 0).toFixed(2)} m/s) > 1,5 m/s gây va đập rách túi!`
+                          : ''
+                    }`
               }
-              summaryRight={`${airToClothActualMMin.toFixed(2)} m/phút · ${interstitialVelMs.toFixed(2)} m/s`}
+              summaryRight={`${airToClothActualMMin.toFixed(2)} m/phút · ${
+                isBagChamberTooSmall
+                  ? 'Thiếu diện tích buồng'
+                  : interstitialVelMs !== null
+                    ? `${interstitialVelMs.toFixed(2)} m/s`
+                    : '—'
+              }`}
             />
 
             <CheckTable
               rows={[
                 {
                   name: 'Vận tốc khí lọc xuyên vải (Air-to-Cloth)',
-                  standard: `≤ ${baghouse.airToClothMaxMMin.toFixed(2)} m/phút`,
+                  standard: `≤ ${Number(baghouse.airToClothMaxMMin || 0).toFixed(2)} m/phút`,
                   actual: `${airToClothActualMMin.toFixed(2)} m/phút (${airToClothActualMs.toFixed(4)} m/s)`,
                   ok: isBagClothVelOk,
                   statusText: isBagClothVelOk
@@ -786,11 +812,17 @@ export default function AirEmissionsCalc() {
                 {
                   name: 'Vận tốc khí dâng giữa các khe túi',
                   standard: '≤ 1,50 m/s',
-                  actual: `${interstitialVelMs.toFixed(2)} m/s`,
+                  actual: isBagChamberTooSmall
+                    ? 'Không đủ diện tích lắp túi'
+                    : interstitialVelMs !== null
+                      ? `${interstitialVelMs.toFixed(2)} m/s`
+                      : '—',
                   ok: isBagUpflowOk,
-                  statusText: isBagUpflowOk
-                    ? 'An toàn giũ bụi'
-                    : 'Quá lớn (Mài mòn túi)',
+                  statusText: isBagChamberTooSmall
+                    ? 'Kích thước buồng không đủ diện tích lắp túi vải'
+                    : isBagUpflowOk
+                      ? 'An toàn giũ bụi'
+                      : 'Quá lớn (Mài mòn túi)',
                 },
                 {
                   name: 'Tổng diện tích vải lọc thực tế',

@@ -15,6 +15,7 @@ import {
   roundUpToStep,
 } from '../components/CalcPrimitives';
 import EquipmentSelector from '../components/EquipmentSelector';
+import { useProjectState } from '../hooks/useProjectState';
 
 const WATER_BASIC_EQUIPMENT_LABELS = {
   iron_mn: 'Công đoạn Khử Sắt / Mangan',
@@ -99,12 +100,12 @@ function computeActualTank(override, shape) {
 export default function WaterSupplyBasic() {
   const { globalQ, setGlobalQ, hydraulics } = useAppContext();
   const [activeTab, setActiveTab] = useState('iron_mn');
-  const [waterTemp, setWaterTemp] = useState(25);
+  const [waterTemp, setWaterTemp] = useProjectState('waterBasic_waterTemp', 25);
   const mu = getDynamicViscosity(waterTemp);
   const nu = mu / 1000; // độ nhớt động học m2/s
 
   // --- Tab 1: Khử Sắt / Mangan ---
-  const [ironMn, setIronMn] = useState({
+  const [ironMn, setIronMn] = useProjectState('waterBasic_ironMn', {
     shape: 'Chữ nhật',
     feIn: 8.0, // mg/L
     mnIn: 1.2, // mg/L
@@ -116,7 +117,7 @@ export default function WaterSupplyBasic() {
   });
 
   // --- Tab 2: Trộn ziczac ---
-  const [zigzag, setZigzag] = useState({
+  const [zigzag, setZigzag] = useProjectState('waterBasic_zigzag', {
     shape: 'Chữ nhật',
     retentionSec: 30, // giây
     numBaffles: 8, // số vách ngăn / ngoặt ziczac
@@ -127,7 +128,7 @@ export default function WaterSupplyBasic() {
   });
 
   // --- Tab 3: Lắng Lamen ---
-  const [lamella, setLamella] = useState({
+  const [lamella, setLamella] = useProjectState('waterBasic_lamella', {
     shape: 'Chữ nhật',
     surfaceLoadMax: 7.0, // m3/m2.h trên mặt bằng bể Lamen
     surfaceLoadTarget: 5.5,
@@ -138,7 +139,7 @@ export default function WaterSupplyBasic() {
   });
 
   // --- Tab 4: Lọc cát nhanh ---
-  const [sandFilter, setSandFilter] = useState({
+  const [sandFilter, setSandFilter] = useProjectState('waterBasic_sandFilter', {
     shape: 'Chữ nhật',
     numTanks: 2,
     filtrationRateTarget: 7.0, // m/h
@@ -153,7 +154,7 @@ export default function WaterSupplyBasic() {
   });
 
   // Per-tab construction overrides
-  const [overrides, setOverrides] = useState({
+  const [overrides, setOverrides] = useProjectState('waterBasic_overrides', {
     iron_mn: null,
     zigzag_mix: null,
     lamella: null,

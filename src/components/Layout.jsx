@@ -9,6 +9,8 @@ import Sidebar, { NAV_ITEMS } from './Sidebar';
 import FloatingToolMenu from './FloatingToolMenu';
 import EngineeringWidget from './EngineeringWidget';
 import { useAppActions, useAppContext } from '../context/AppContext';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { STORAGE_QUOTA_EVENT, STORAGE_QUOTA_MESSAGE } from '../utils/storage';
 
 /**
  * Cô lập toàn bộ state của Trạm tiện ích nổi (FloatingToolMenu & EngineeringWidget).
@@ -84,16 +86,7 @@ export default function Layout({ children }) {
 
   const showPrintHeader = location.pathname !== '/nhat-ky-van-hanh';
 
-  useEffect(() => {
-    if (sidebarOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
-    return () => {
-      document.body.style.overflow = 'unset';
-    };
-  }, [sidebarOpen]);
+  useBodyScrollLock(sidebarOpen);
 
   useEffect(() => {
     return () => {
@@ -112,6 +105,20 @@ export default function Layout({ children }) {
       setToast((prev) => (prev?.message === message ? null : prev));
     }, 4000);
   }, []);
+
+  useEffect(() => {
+    const handleStorageQuotaExceeded = (event) => {
+      const message = event?.detail?.message || STORAGE_QUOTA_MESSAGE;
+      showNotice(false, message);
+    };
+    window.addEventListener(STORAGE_QUOTA_EVENT, handleStorageQuotaExceeded);
+    return () => {
+      window.removeEventListener(
+        STORAGE_QUOTA_EVENT,
+        handleStorageQuotaExceeded
+      );
+    };
+  }, [showNotice]);
 
   const handlePrintPdf = useCallback(() => {
     openPrintModal(currentRoute?.label || 'Báo cáo Kỹ thuật');

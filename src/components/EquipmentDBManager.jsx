@@ -17,6 +17,8 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { safeSetItem } from '../utils/storage';
 
 export const EQUIPMENT_STORAGE_KEY = 'omnieco_equipments';
 export const EQUIPMENT_UPDATED_EVENT = 'omnieco:equipments-updated';
@@ -149,10 +151,7 @@ export function loadEquipmentsFromStorage() {
   try {
     const raw = window.localStorage.getItem(EQUIPMENT_STORAGE_KEY);
     if (raw === null) {
-      window.localStorage.setItem(
-        EQUIPMENT_STORAGE_KEY,
-        JSON.stringify(DEFAULT_EQUIPMENTS)
-      );
+      safeSetItem(EQUIPMENT_STORAGE_KEY, JSON.stringify(DEFAULT_EQUIPMENTS));
       return DEFAULT_EQUIPMENTS;
     }
     const parsed = JSON.parse(raw);
@@ -171,7 +170,7 @@ export function saveEquipmentsToStorage(list) {
     const sanitized = Array.isArray(list)
       ? list.map((item, idx) => sanitizeEquipmentRecord(item, idx)).filter(Boolean)
       : [];
-    window.localStorage.setItem(EQUIPMENT_STORAGE_KEY, JSON.stringify(sanitized));
+    safeSetItem(EQUIPMENT_STORAGE_KEY, JSON.stringify(sanitized));
     window.dispatchEvent(
       new CustomEvent(EQUIPMENT_UPDATED_EVENT, { detail: sanitized })
     );
@@ -277,6 +276,10 @@ export default function EquipmentDBManager() {
     window.addEventListener('storage', handleStorageSync);
     return () => window.removeEventListener('storage', handleStorageSync);
   }, []);
+
+  useBodyScrollLock(
+    Boolean(isFormOpen || deleteTarget || confirmResetOpen || pendingImportList)
+  );
 
   // Đóng modal bằng phím Escape
   useEffect(() => {
@@ -993,7 +996,7 @@ export default function EquipmentDBManager() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-xl max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-xl max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <h3
@@ -1207,7 +1210,7 @@ export default function EquipmentDBManager() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-100">
@@ -1262,7 +1265,7 @@ export default function EquipmentDBManager() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-lg max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-lg max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-start justify-between gap-3 px-4 sm:px-5 py-3.5 sm:py-4 border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
@@ -1345,7 +1348,7 @@ export default function EquipmentDBManager() {
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-md max-h-[85dvh] sm:max-h-[90dvh] flex flex-col bg-slate-900 border border-slate-700 rounded-t-2xl sm:rounded-xl shadow-2xl overflow-hidden"
           >
             <div className="flex items-center justify-between px-4 sm:px-5 py-3.5 border-b border-slate-800 shrink-0">
               <h3 className="text-base font-bold text-slate-100">
